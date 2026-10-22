@@ -42,7 +42,10 @@ const publishedEvent = (overrides = {}) => ({
   ...overrides,
 });
 
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+  jest.restoreAllMocks();
+  jest.useRealTimers();
+});
 
 describe("POST /api/events/:eventId/register", () => {
   test("participant registers successfully -> 201", async () => {
@@ -125,17 +128,40 @@ describe("POST /api/events/:eventId/register", () => {
     expect(res.body.message).toBe("Registration deadline has passed");
   });
 
-  test("event start time has passed -> 400", async () => {
-    asRole(ROLES.PARTICIPANT);
-    jest.spyOn(Event, "findById").mockResolvedValue(
-      publishedEvent({ startDate: new Date(Date.now() - 1000) })
-    );
-    const createSpy = jest.spyOn(Registration, "create");
+  test("event starts exactly at the registration cutoff -> 400", async () => {
+    jest.useFakeTimers();
 
-    const res = await request(app).post(path).set(auth);
+    const now = new Date("2030-01-01T12:00:00.000Z");
+    jest.setSystemTime(now);
 
-    expect(res.status).toBe(400);
-    expect(createSpy).not.toHaveBeenCalled();
+    try {
+      asRole(ROLES.PARTICIPANT);
+
+      const boundaryToken = jwt.sign(
+        { sub: userId.toString() },
+        process.env.JWT_SECRET,
+        { expiresIn: "1h" }
+      );
+
+      const boundaryAuth = {
+        Authorization: `Bearer ${boundaryToken}`,
+      };
+
+      jest.spyOn(Event, "findById").mockResolvedValue(
+        publishedEvent({ startDate: now })
+      );
+
+      const createSpy = jest.spyOn(Registration, "create");
+
+      const res = await request(app)
+        .post(path)
+        .set(boundaryAuth);
+
+      expect(res.status).toBe(400);
+      expect(createSpy).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test("already actively registered -> 409", async () => {
