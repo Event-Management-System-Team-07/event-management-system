@@ -154,3 +154,44 @@ describe("PUT /api/events/:id", () => {
     expect(res.status).toBe(400);
   });
 });
+describe("PUT /api/events/:id partial updates", () => {
+  test("title-only update keeps every other field unchanged", async () => {
+    asRole(ROLES.ORGANIZER);
+    const ev = makeEvent();
+    jest.spyOn(Event, "findById").mockResolvedValue(ev);
+    const res = await request(app).put(`/api/events/${ev._id}`).set(auth).send({ title: "Only Title" });
+    expect(res.status).toBe(200);
+    expect(res.body.event.title).toBe("Only Title");
+    expect(res.body.event.description).toBe(goodBody.description);
+    expect(res.body.event.venue).toBe(goodBody.venue);
+    expect(res.body.event.capacity).toBe(goodBody.capacity);
+    expect(res.body.event.startDate).toBe(goodBody.startDate);
+    expect(res.body.event.endDate).toBe(goodBody.endDate);
+    expect(res.body.event.status).toBe("draft");
+    expect(ev.save).toHaveBeenCalled();
+  });
+
+  test("valid end-date-only update changes only the end date", async () => {
+    asRole(ROLES.ORGANIZER);
+    const ev = makeEvent();
+    jest.spyOn(Event, "findById").mockResolvedValue(ev);
+    const newEnd = future(10);
+    const res = await request(app).put(`/api/events/${ev._id}`).set(auth).send({ endDate: newEnd });
+    expect(res.status).toBe(200);
+    expect(res.body.event.endDate).toBe(newEnd);
+    expect(res.body.event.startDate).toBe(goodBody.startDate);
+    expect(res.body.event.title).toBe(goodBody.title);
+  });
+
+  test("valid start-date-only update changes only the start date", async () => {
+    asRole(ROLES.ORGANIZER);
+    const ev = makeEvent();
+    jest.spyOn(Event, "findById").mockResolvedValue(ev);
+    const newStart = future(6);
+    const res = await request(app).put(`/api/events/${ev._id}`).set(auth).send({ startDate: newStart });
+    expect(res.status).toBe(200);
+    expect(res.body.event.startDate).toBe(newStart);
+    expect(res.body.event.endDate).toBe(goodBody.endDate);
+    expect(res.body.event.venue).toBe(goodBody.venue);
+  });
+});
