@@ -65,25 +65,20 @@ describe("POST /api/events/:eventId/register", () => {
 
   test("no token -> 401", async () => {
     const res = await request(app).post(path);
-
     expect(res.status).toBe(401);
   });
 
   test("organizer cannot register as a participant -> 403", async () => {
     asRole(ROLES.ORGANIZER);
-
     const res = await request(app).post(path).set(auth);
-
     expect(res.status).toBe(403);
   });
 
   test("invalid event ID -> 400", async () => {
     asRole(ROLES.PARTICIPANT);
-
     const res = await request(app)
       .post("/api/events/not-an-id/register")
       .set(auth);
-
     expect(res.status).toBe(400);
     expect(res.body.message).toBe("Invalid event ID");
   });
@@ -91,9 +86,7 @@ describe("POST /api/events/:eventId/register", () => {
   test("event does not exist -> 404", async () => {
     asRole(ROLES.PARTICIPANT);
     jest.spyOn(Event, "findById").mockResolvedValue(null);
-
     const res = await request(app).post(path).set(auth);
-
     expect(res.status).toBe(404);
     expect(res.body.message).toBe("Event not found");
   });
@@ -103,9 +96,7 @@ describe("POST /api/events/:eventId/register", () => {
     jest.spyOn(Event, "findById").mockResolvedValue(
       publishedEvent({ status: "draft" })
     );
-
     const res = await request(app).post(path).set(auth);
-
     expect(res.status).toBe(400);
     expect(res.body.message).toBe(
       "Registration is only available for published events"
@@ -117,9 +108,7 @@ describe("POST /api/events/:eventId/register", () => {
     jest.spyOn(Event, "findById").mockResolvedValue(
       publishedEvent({ startDate: new Date(Date.now() - 1000) })
     );
-
     const res = await request(app).post(path).set(auth);
-
     expect(res.status).toBe(400);
     expect(res.body.message).toBe("Registration deadline has passed");
   });
@@ -142,9 +131,7 @@ describe("POST /api/events/:eventId/register", () => {
     jest.spyOn(Registration, "findOne").mockResolvedValue({
       status: "active",
     });
-
     const res = await request(app).post(path).set(auth);
-
     expect(res.status).toBe(409);
     expect(res.body.message).toBe(
       "You are already registered for this event"
@@ -158,9 +145,7 @@ describe("POST /api/events/:eventId/register", () => {
     );
     jest.spyOn(Registration, "findOne").mockResolvedValue(null);
     jest.spyOn(Registration, "countDocuments").mockResolvedValue(2);
-
     const res = await request(app).post(path).set(auth);
-
     expect(res.status).toBe(409);
     expect(res.body.message).toBe("Event is full");
   });
@@ -179,6 +164,64 @@ describe("POST /api/events/:eventId/register", () => {
     expect(res.status).toBe(409);
     expect(res.body.message).toBe(
       "You are already registered for this event"
+    );
+  });
+});
+
+describe("DELETE /api/events/:eventId/register", () => {
+  test("participant cancels active registration -> 200", async () => {
+    asRole(ROLES.PARTICIPANT);
+    jest.spyOn(Event, "findById").mockResolvedValue(publishedEvent());
+
+    const registration = {
+      user: userId,
+      event: eventId,
+      status: "active",
+      save: jest.fn().mockImplementation(async function () {
+        return this;
+      }),
+    };
+
+    jest.spyOn(Registration, "findOne").mockResolvedValue(registration);
+
+    const res = await request(app).delete(path).set(auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe("Registration cancelled successfully");
+    expect(registration.status).toBe("cancelled");
+    expect(registration.save).toHaveBeenCalledTimes(1);
+  });
+
+  test("no token when cancelling -> 401", async () => {
+    const res = await request(app).delete(path);
+    expect(res.status).toBe(401);
+  });
+
+  test("invalid event ID when cancelling -> 400", async () => {
+    asRole(ROLES.PARTICIPANT);
+    const res = await request(app)
+      .delete("/api/events/not-an-id/register")
+      .set(auth);
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe("Invalid event ID");
+  });
+
+  test("event does not exist when cancelling -> 404", async () => {
+    asRole(ROLES.PARTICIPANT);
+    jest.spyOn(Event, "findById").mockResolvedValue(null);
+    const res = await request(app).delete(path).set(auth);
+    expect(res.status).toBe(404);
+    expect(res.body.message).toBe("Event not found");
+  });
+
+  test("no active registration to cancel -> 404", async () => {
+    asRole(ROLES.PARTICIPANT);
+    jest.spyOn(Event, "findById").mockResolvedValue(publishedEvent());
+    jest.spyOn(Registration, "findOne").mockResolvedValue(null);
+    const res = await request(app).delete(path).set(auth);
+    expect(res.status).toBe(404);
+    expect(res.body.message).toBe(
+      "No active registration found for this event"
     );
   });
 });
