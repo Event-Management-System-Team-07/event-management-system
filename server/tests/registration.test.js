@@ -34,12 +34,10 @@ const asRole = (role) =>
     })
   );
 
-const future = new Date(Date.now() + 86400000);
-
 const publishedEvent = (overrides = {}) => ({
   _id: eventId,
   status: "published",
-  startDate: future,
+  startDate: new Date(Date.now() + 86400000),
   capacity: 2,
   ...overrides,
 });
@@ -87,6 +85,7 @@ describe("POST /api/events/:eventId/register", () => {
       .set(auth);
 
     expect(res.status).toBe(400);
+    expect(res.body.message).toBe("Invalid event ID");
   });
 
   test("event does not exist -> 404", async () => {
@@ -96,6 +95,7 @@ describe("POST /api/events/:eventId/register", () => {
     const res = await request(app).post(path).set(auth);
 
     expect(res.status).toBe(404);
+    expect(res.body.message).toBe("Event not found");
   });
 
   test("unpublished event -> 400", async () => {
@@ -107,6 +107,9 @@ describe("POST /api/events/:eventId/register", () => {
     const res = await request(app).post(path).set(auth);
 
     expect(res.status).toBe(400);
+    expect(res.body.message).toBe(
+      "Registration is only available for published events"
+    );
   });
 
   test("event has started -> 400", async () => {
@@ -118,6 +121,19 @@ describe("POST /api/events/:eventId/register", () => {
     const res = await request(app).post(path).set(auth);
 
     expect(res.status).toBe(400);
+    expect(res.body.message).toBe("Registration deadline has passed");
+  });
+
+  test("event start-time cutoff is enforced -> 400", async () => {
+    asRole(ROLES.PARTICIPANT);
+    jest.spyOn(Event, "findById").mockResolvedValue(
+      publishedEvent({ startDate: new Date(Date.now() - 1) })
+    );
+
+    const res = await request(app).post(path).set(auth);
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe("Registration deadline has passed");
   });
 
   test("already actively registered -> 409", async () => {
@@ -130,6 +146,9 @@ describe("POST /api/events/:eventId/register", () => {
     const res = await request(app).post(path).set(auth);
 
     expect(res.status).toBe(409);
+    expect(res.body.message).toBe(
+      "You are already registered for this event"
+    );
   });
 
   test("event is full -> 409", async () => {
@@ -144,5 +163,22 @@ describe("POST /api/events/:eventId/register", () => {
 
     expect(res.status).toBe(409);
     expect(res.body.message).toBe("Event is full");
+  });
+
+  test("database duplicate-key error -> 409", async () => {
+    asRole(ROLES.PARTICIPANT);
+    jest.spyOn(Event, "findById").mockResolvedValue(publishedEvent());
+    jest.spyOn(Registration, "findOne").mockResolvedValue(null);
+    jest.spyOn(Registration, "countDocuments").mockResolvedValue(0);
+    jest.spyOn(Registration, "create").mockRejectedValue({
+      code: 11000,
+    });
+
+    const res = await request(app).post(path).set(auth);
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe(
+      "You are already registered for this event"
+    );
   });
 });
