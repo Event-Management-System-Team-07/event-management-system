@@ -42,7 +42,10 @@ const publishedEvent = (overrides = {}) => ({
   ...overrides,
 });
 
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+  jest.restoreAllMocks();
+  jest.useRealTimers();
+});
 
 describe("POST /api/events/:eventId/register", () => {
   test("participant registers successfully -> 201", async () => {
@@ -123,6 +126,42 @@ describe("POST /api/events/:eventId/register", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.message).toBe("Registration deadline has passed");
+  });
+
+  test("event starts exactly at the registration cutoff -> 400", async () => {
+    jest.useFakeTimers();
+
+    const now = new Date("2030-01-01T12:00:00.000Z");
+    jest.setSystemTime(now);
+
+    try {
+      asRole(ROLES.PARTICIPANT);
+
+      const boundaryToken = jwt.sign(
+        { sub: userId.toString() },
+        process.env.JWT_SECRET,
+        { expiresIn: "1h" }
+      );
+
+      const boundaryAuth = {
+        Authorization: `Bearer ${boundaryToken}`,
+      };
+
+      jest.spyOn(Event, "findById").mockResolvedValue(
+        publishedEvent({ startDate: now })
+      );
+
+      const createSpy = jest.spyOn(Registration, "create");
+
+      const res = await request(app)
+        .post(path)
+        .set(boundaryAuth);
+
+      expect(res.status).toBe(400);
+      expect(createSpy).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test("already actively registered -> 409", async () => {
@@ -222,6 +261,58 @@ describe("DELETE /api/events/:eventId/register", () => {
     expect(res.status).toBe(404);
     expect(res.body.message).toBe(
       "No active registration found for this event"
+    );
+  });
+
+  test("one slot remaining -> registration succeeds", async () => {
+    asRole(ROLES.PARTICIPANT);
+    jest.spyOn(Event, "findById").mockResolvedValue(publishedEvent());
+    jest.spyOn(Registration, "findOne").mockResolvedValue(null);
+    jest.spyOn(Registration, "countDocuments").mockResolvedValue(1);
+    jest.spyOn(Registration, "create").mockImplementation(async (data) => ({
+      ...data,
+      _id: new mongoose.Types.ObjectId(),
+    }));
+
+    const res = await request(app).post(path).set(auth);
+
+    expect(res.status).toBe(201);
+    expect(Registration.create).toHaveBeenCalledTimes(1);
+  });
+
+  test("active registration count filters out cancelled registrations", async () => {
+    asRole(ROLES.PARTICIPANT);
+    jest.spyOn(Event, "findById").mockResolvedValue(publishedEvent());
+    jest.spyOn(Registration, "findOne").mockResolvedValue(null);
+    const countSpy = jest
+      .spyOn(Registration, "countDocuments")
+      .mockResolvedValue(1);
+    jest.spyOn(Registration, "create").mockImplementation(async (data) => ({
+      ...data,
+      _id: new mongoose.Types.ObjectId(),
+    }));
+
+    const res = await request(app).post(path).set(auth);
+
+    expect(res.status).toBe(201);
+    expect(countSpy).toHaveBeenCalledWith({
+      event: eventId,
+      status: "active",
+    });
+  });
+
+  test("duplicate-key database error -> 409", async () => {
+    asRole(ROLES.PARTICIPANT);
+    jest.spyOn(Event, "findById").mockResolvedValue(publishedEvent());
+    jest.spyOn(Registration, "findOne").mockResolvedValue(null);
+    jest.spyOn(Registration, "countDocuments").mockResolvedValue(0);
+    jest.spyOn(Registration, "create").mockRejectedValue({ code: 11000 });
+
+    const res = await request(app).post(path).set(auth);
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe(
+      "You are already registered for this event"
     );
   });
 });
