@@ -57,3 +57,63 @@ exports.updateEvent = async (req, res) => {
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 };
+
+// Loads an event and checks the caller may change it. Returns the event, or null after sending the error response.
+async function loadManageableEvent(req, res) {
+  const { id } = req.params;
+  if (!mongoose.isValidObjectId(id)) {
+    res.status(400).json({ message: "Invalid event id" });
+    return null;
+  }
+  const event = await Event.findById(id);
+  if (!event) {
+    res.status(404).json({ message: "Event not found" });
+    return null;
+  }
+  const isOwner = event.organizer.toString() === req.user._id.toString();
+  if (!isOwner && req.user.role !== ROLES.ADMIN) {
+    res.status(403).json({ message: "You can only manage your own events" });
+    return null;
+  }
+  return event;
+}
+
+// PATCH /api/events/:id/publish  (owner Organizer, or Admin)
+exports.publishEvent = async (req, res) => {
+  try {
+    const event = await loadManageableEvent(req, res);
+    if (!event) return;
+
+    if (event.status === "published")
+      return res.status(409).json({ message: "Event is already published" });
+    if (event.status === "cancelled")
+      return res.status(409).json({ message: "Cancelled events cannot be published" });
+    if (event.endDate < new Date())
+      return res.status(409).json({ message: "An event that has already ended cannot be published" });
+
+    event.status = "published";
+    await event.save();
+    return res.json({ message: "Event published", event });
+  } catch (err) {
+    console.error("publishEvent failed:", err.message);
+    return res.status(500).json({ message: "Something went wrong. Please try again." });
+  }
+};
+
+// PATCH /api/events/:id/cancel  (owner Organizer, or Admin)
+exports.cancelEvent = async (req, res) => {
+  try {
+    const event = await loadManageableEvent(req, res);
+    if (!event) return;
+
+    if (event.status === "cancelled")
+      return res.status(409).json({ message: "Event is already cancelled" });
+
+    event.status = "cancelled";
+    await event.save();
+    return res.json({ message: "Event cancelled", event });
+  } catch (err) {
+    console.error("cancelEvent failed:", err.message);
+    return res.status(500).json({ message: "Something went wrong. Please try again." });
+  }
+};
