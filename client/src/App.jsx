@@ -1,122 +1,192 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useState } from "react";
+import "./App.css";
+
+const initialEvents = [
+  {
+    id: 1,
+    title: "Tech Innovation Summit",
+    date: "2026-11-15",
+    time: "10:00 AM",
+    location: "Bengaluru",
+    category: "Technology",
+    description: "Discover new technologies and connect with innovators.",
+    seats: 120,
+  },
+  {
+    id: 2,
+    title: "Music & Arts Festival",
+    date: "2026-11-22",
+    time: "5:00 PM",
+    location: "Bengaluru",
+    category: "Music",
+    description: "Enjoy live music, art, and an evening with the community.",
+    seats: 80,
+  },
+  {
+    id: 3,
+    title: "Startup Networking Meetup",
+    date: "2026-12-05",
+    time: "2:00 PM",
+    location: "Mysuru",
+    category: "Business",
+    description: "Meet founders, exchange ideas, and build connections.",
+    seats: 50,
+  },
+];
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [events] = useState(initialEvents);
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("All");
+  const [registered, setRegistered] = useState([]);
+
+  const categories = ["All", ...new Set(events.map((event) => event.category))];
+
+  const filteredEvents = events.filter((event) => {
+    const matchesSearch =
+      event.title.toLowerCase().includes(search.toLowerCase()) ||
+      event.location.toLowerCase().includes(search.toLowerCase());
+
+    const matchesCategory =
+      category === "All" || event.category === category;
+
+    return matchesSearch && matchesCategory;
+  });
+
+  function register(event) {
+    if (registered.includes(event.id)) return;
+
+    setRegistered([...registered, event.id]);
+    alert(`You registered for ${event.title}!`);
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
+    <div className="app">
+      <header className="navbar">
+        <a className="brand" href="#">
+          <span className="brand-icon">E</span>
+          Eventify
+        </a>
+        <a className="nav-link" href="#events">
+          Explore Events
+        </a>
+      </header>
+
+      <main>
+        <section className="hero">
+          <span className="eyebrow">YOUR NEXT EXPERIENCE STARTS HERE</span>
+          <h1>
+            Discover events.
+            <br />
+            <span>Make memories.</span>
+          </h1>
           <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
+            Find exciting events, meet amazing people, and register for
+            experiences that inspire you.
           </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+          <a className="hero-button" href="#events">
+            Explore Events ↓
+          </a>
+          <div className="hero-decoration">✦</div>
+        </section>
 
-      <div className="ticks"></div>
+        <section className="events-section" id="events">
+          <div className="section-heading">
+            <div>
+              <span className="eyebrow">WHAT'S HAPPENING</span>
+              <h2>Upcoming Events</h2>
+              <p>Find the perfect event for you.</p>
+            </div>
+            <span className="event-count">
+              {filteredEvents.length} events
+            </span>
+          </div>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+          <div className="filters">
+            <input
+              type="search"
+              placeholder="Search by event or location..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search events"
+            />
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              aria-label="Filter by category"
+            >
+              {categories.map((item) => (
+                <option key={item} value={item}>
+                  {item === "All" ? "All Categories" : item}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="event-grid">
+            {filteredEvents.map((event) => (
+              <article className="event-card" key={event.id}>
+                <div className={`event-banner category-${event.category.toLowerCase()}`}>
+                  <span>{event.category}</span>
+                  <span className="banner-symbol">
+                    {event.category === "Technology"
+                      ? "✧"
+                      : event.category === "Music"
+                        ? "♫"
+                        : "↗"}
+                  </span>
+                </div>
+
+                <div className="event-content">
+                  <div className="event-date">
+                    📅{" "}
+                    {new Date(`${event.date}T12:00:00`).toLocaleDateString(
+                      "en-IN",
+                      { day: "numeric", month: "short", year: "numeric" }
+                    )}
+                    <span>🕒 {event.time}</span>
+                  </div>
+
+                  <h3>{event.title}</h3>
+                  <p className="event-description">{event.description}</p>
+                  <p className="event-location">📍 {event.location}</p>
+
+                  <div className="event-footer">
+                    <span>{event.seats} seats available</span>
+                    <button
+                      onClick={() => register(event)}
+                      disabled={registered.includes(event.id)}
+                    >
+                      {registered.includes(event.id)
+                        ? "Registered ✓"
+                        : "Register →"}
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          {filteredEvents.length === 0 && (
+            <div className="empty-state">
+              <h3>No events found</h3>
+              <p>Try a different search or category.</p>
+            </div>
+          )}
+        </section>
+      </main>
+
+      <footer>
+        <a className="brand" href="#">
+          <span className="brand-icon">E</span>
+          Eventify
+        </a>
+        <p>Bringing people together, one event at a time.</p>
+        <span>Event Management System · 2026</span>
+      </footer>
+    </div>
+  );
 }
 
-export default App
+export default App;
