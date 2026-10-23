@@ -1,6 +1,7 @@
 const express = require("express");
 const authRoutes = require("./routes/authRoutes"); 
 const eventRoutes = require("./routes/eventRoutes");
+const eventBrowseRoutes = require("./routes/eventBrowseRoutes");
 
 const app = express();
 
@@ -13,4 +14,5 @@ app.get("/api/health", (req, res) => {
 });
 app.use("/api/auth", authRoutes); 
 app.use("/api/events", eventRoutes);
+app.use("/api/events", eventBrowseRoutes);
 module.exports = app;
