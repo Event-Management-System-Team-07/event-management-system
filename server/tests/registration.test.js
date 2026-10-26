@@ -316,3 +316,135 @@ describe("DELETE /api/events/:eventId/register", () => {
     );
   });
 });
+
+describe("GET /api/events/registrations/history", () => {
+  const historyPath = "/api/events/registrations/history";
+  const anotherUserId = new mongoose.Types.ObjectId();
+
+  const activeRegistration = {
+    _id: new mongoose.Types.ObjectId(),
+    user: userId,
+    event: {
+      _id: eventId,
+      title: "Active Test Event",
+    },
+    status: "active",
+    createdAt: new Date("2026-10-20T10:00:00.000Z"),
+  };
+
+  const cancelledRegistration = {
+    _id: new mongoose.Types.ObjectId(),
+    user: userId,
+    event: {
+      _id: new mongoose.Types.ObjectId(),
+      title: "Cancelled Test Event",
+    },
+    status: "cancelled",
+    createdAt: new Date("2026-10-19T10:00:00.000Z"),
+  };
+
+  const mockHistoryQuery = (registrations) => {
+    const query = {
+      populate: jest.fn(),
+      sort: jest.fn(),
+    };
+
+    query.populate.mockReturnValue(query);
+    query.sort.mockResolvedValue(registrations);
+
+    jest.spyOn(Registration, "find").mockReturnValue(query);
+
+    return query;
+  };
+
+  test("participant receives active and cancelled registrations", async () => {
+    asRole(ROLES.PARTICIPANT);
+
+    const query = mockHistoryQuery([
+      activeRegistration,
+      cancelledRegistration,
+    ]);
+
+    const res = await request(app)
+      .get(historyPath)
+      .set(auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body.registrations).toHaveLength(2);
+    expect(res.body.registrations.map((r) => r.status)).toEqual([
+      "active",
+      "cancelled",
+    ]);
+
+    expect(Registration.find).toHaveBeenCalledWith({
+      user: userId,
+    });
+    expect(query.populate).toHaveBeenCalledWith("event");
+    expect(query.sort).toHaveBeenCalledWith({ createdAt: -1 });
+  });
+
+  test("participant with no registrations receives an empty array", async () => {
+    asRole(ROLES.PARTICIPANT);
+    mockHistoryQuery([]);
+
+    const res = await request(app)
+      .get(historyPath)
+      .set(auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ registrations: [] });
+  });
+
+  test("unauthenticated request is rejected", async () => {
+    const res = await request(app).get(historyPath);
+
+    expect(res.status).toBe(401);
+  });
+
+  test("organizer cannot access participant registration history", async () => {
+    asRole(ROLES.ORGANIZER);
+
+    const res = await request(app)
+      .get(historyPath)
+      .set(auth);
+
+    expect(res.status).toBe(403);
+  });
+
+  test("history query is restricted to the authenticated participant", async () => {
+    asRole(ROLES.PARTICIPANT);
+    mockHistoryQuery([]);
+
+    const res = await request(app)
+      .get(`${historyPath}?userId=${anotherUserId}`)
+      .set(auth);
+
+    expect(res.status).toBe(200);
+    expect(Registration.find).toHaveBeenCalledWith({
+      user: userId,
+    });
+  });
+
+  test("database error returns 500", async () => {
+    asRole(ROLES.PARTICIPANT);
+
+    const query = {
+      populate: jest.fn(),
+      sort: jest.fn(),
+    };
+
+    query.populate.mockReturnValue(query);
+    query.sort.mockRejectedValue(new Error("Database failure"));
+
+    jest.spyOn(Registration, "find").mockReturnValue(query);
+
+    const res = await request(app)
+      .get(historyPath)
+      .set(auth);
+
+    expect(res.status).toBe(500);
+    expect(res.body.message).toBe(
+      "Something went wrong. Please try again."
+    );
+  });
+});
