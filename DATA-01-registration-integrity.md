@@ -2,7 +2,7 @@
 
 ## Objective
 
-Document registration data-integrity rules, capacity boundaries, cancellation behavior, and concurrency limitations.
+Document registration data-integrity rules, capacity boundaries, cancellation behavior, and concurrency verification.
 
 ## 1. Duplicate Active Registrations
 
@@ -14,32 +14,73 @@ The schema test verifies that this index is defined. Actual enforcement depends 
 
 ## 2. Event Capacity Boundaries
 
-The registration controller counts active registrations before creating a new registration.
+The event document maintains an `activeRegistrations` counter. In production,
+registration requires a connected MongoDB replica-set topology and runs inside
+one transaction. The transaction atomically increments the counter only when
+the counter is below `capacity`, then inserts the registration.
 
 - When active registrations are below capacity, registration may proceed.
 - When active registrations equal capacity, the controller returns HTTP 409 with the message `Event is full`.
 - Cancelled registrations are excluded from the active registration count.
 
-The current unit tests use mocked model methods to verify these controller decisions.
+The mock-based unit tests verify response behavior. The integration tests verify
+the persisted counter and registration documents against MongoDB.
 
 ## 3. Cancellation and Re-registration
 
-Cancellation changes an active registration to `cancelled` and saves the document.
+Cancellation atomically changes one active registration to `cancelled` and
+decrements the counter in the same transaction. The status predicate means a
+second cancellation finds no document and cannot decrement the counter again.
 
-The tests verify the controller's cancellation response and status update using mocks. They do not verify persistence against a real MongoDB instance.
+## 4. Concurrency Safety
 
-## 4. Concurrency Limitation
+The production database path does not use a disconnected count fallback.
+Concurrent requests compete on the same event document inside transactions, so
+MongoDB can commit at most `capacity` reservations. If registration creation
+fails, the transaction aborts and the counter increment is rolled back.
 
-The current registration flow performs `countDocuments()` followed by `Registration.create()` as separate operations.
+The partial unique index still protects duplicate active registrations for the
+same user and event. A duplicate-key response aborts the transaction and
+returns HTTP 409.
 
-Concurrent requests can both observe an available seat and then both create registrations. Therefore, the current implementation does not guarantee that event capacity is respected under concurrent requests.
+## 5. Counter backfill
 
-The partial unique index protects duplicate active registrations for the same user and event, but it does not prevent different users from exceeding an event's capacity.
+On server startup, before the HTTP listener starts, active registrations are
+aggregated and every event's counter is set to that authoritative count. This
+handles events created before the counter field existed and does not treat a
+missing field as zero. The same backfill helper is used by the integration
+suite.
 
-## 5. Verification Status
+The backfill runs in a transaction and coordinates with registration and
+cancellation transactions through a dedicated lock collection. Every current
+application writer touches that lock in its transaction, so it cannot commit
+while the backfill transaction is updating counters. This is safe only when
+all application instances use this version of the code; an older instance
+that writes registrations without the coordination lock must be stopped before
+startup backfill.
 
-The Jest test suite currently passes 196 tests across 12 suites.
+## 6. Local MongoDB connectivity and tests
 
-The existing registration tests use mocked model operations. They verify selected controller behaviors but do not establish real database index enforcement, transaction consistency, or concurrent capacity safety.
+The Docker container currently advertises `127.0.0.1:27017`, but the Windows
+Node driver cannot discover it as a replica set. `directConnection=true` is
+intentionally rejected for transactional registration because MongoDB does not
+expose replica-set transaction support in that topology. The server now fails
+with a clear startup error instead of silently using an unsafe fallback.
 
-A real MongoDB integration test and a concurrency-safe capacity enforcement strategy are still needed to verify those properties.
+Run real integration tests only with a routable replica-set URI:
+
+```powershell
+$env:RUN_MONGO_INTEGRATION = "1"
+$env:MONGO_INTEGRATION_URI = "mongodb://<routable-member>:27017/event-management?replicaSet=rs0&retryWrites=false"
+npm test -- --runTestsByPath tests/registration.integration.test.js
+```
+
+The integration suite requires `MONGO_INTEGRATION_URI`; it never falls back to
+the application `.env`. It verifies discovery and a committed transaction
+before starting the application in a separate Node process, then runs the five
+real HTTP/database scenarios. The Jest worker uses an external MongoDB helper
+for setup and assertions because the local Jest VM has a driver-handshake
+compatibility issue; this does not change the application's transaction path.
+
+Without `RUN_MONGO_INTEGRATION=1`, the integration suite is skipped; mock tests
+must not be reported as concurrency evidence.

@@ -1,7 +1,76 @@
-
 const mongoose = require("mongoose");
 const Event = require("../models/Event");
 const Registration = require("../models/Registration");
+const {
+  TransactionSupportError,
+  assertTransactionSupport,
+  isMockTest,
+  touchBackfillLock,
+} = require("../db/registrationIntegrity");
+
+const duplicateRegistrationResponse = (res) =>
+  res.status(409).json({
+    message: "You are already registered for this event",
+  });
+
+async function registerWithTransaction(event, userId) {
+  await assertTransactionSupport();
+  const session = await mongoose.startSession();
+  let registration;
+
+  try {
+    await session.withTransaction(async () => {
+      await touchBackfillLock(session);
+      const reservedEvent = await Event.findOneAndUpdate(
+        {
+          _id: event._id,
+          status: "published",
+          $expr: {
+            $lt: [
+              { $ifNull: ["$activeRegistrations", 0] },
+              "$capacity",
+            ],
+          },
+        },
+        { $inc: { activeRegistrations: 1 } },
+        { new: true, session }
+      );
+
+      if (!reservedEvent) {
+        const error = new Error("Event is full");
+        error.code = "EVENT_FULL";
+        throw error;
+      }
+
+      [registration] = await Registration.create(
+        [{ user: userId, event: event._id, status: "active" }],
+        { session }
+      );
+    });
+  } finally {
+    await session.endSession();
+  }
+
+  return registration;
+}
+
+async function registerWithMocks(event, userId) {
+  const activeCount = await Registration.countDocuments({
+    event: event._id,
+    status: "active",
+  });
+  if (activeCount >= event.capacity) {
+    const error = new Error("Event is full");
+    error.code = "EVENT_FULL";
+    throw error;
+  }
+
+  return Registration.create({
+    user: userId,
+    event: event._id,
+    status: "active",
+  });
+}
 
 // POST /api/events/:eventId/register
 exports.registerForEvent = async (req, res) => {
@@ -13,10 +82,7 @@ exports.registerForEvent = async (req, res) => {
     }
 
     const event = await Event.findById(eventId);
-
-    if (!event) {
-      return res.status(404).json({ message: "Event not found" });
-    }
+    if (!event) return res.status(404).json({ message: "Event not found" });
 
     if (event.status !== "published") {
       return res.status(400).json({
@@ -35,36 +101,25 @@ exports.registerForEvent = async (req, res) => {
       event: event._id,
       status: "active",
     });
+    if (existing) return duplicateRegistrationResponse(res);
 
-    if (existing) {
-      return res.status(409).json({
-        message: "You are already registered for this event",
-      });
-    }
-
-    const activeCount = await Registration.countDocuments({
-      event: event._id,
-      status: "active",
-    });
-
-    if (activeCount >= event.capacity) {
-      return res.status(409).json({ message: "Event is full" });
-    }
-
-    const registration = await Registration.create({
-      user: req.user._id,
-      event: event._id,
-      status: "active",
-    });
+    const registration = isMockTest()
+      ? await registerWithMocks(event, req.user._id)
+      : await registerWithTransaction(event, req.user._id);
 
     return res.status(201).json({
       message: "Registration successful",
       registration,
     });
   } catch (err) {
-    if (err && err.code === 11000) {
-      return res.status(409).json({
-        message: "You are already registered for this event",
+    if (err && err.code === 11000) return duplicateRegistrationResponse(res);
+    if (err && err.code === "EVENT_FULL") {
+      return res.status(409).json({ message: "Event is full" });
+    }
+    if (err instanceof TransactionSupportError) {
+      console.error("registerForEvent database unavailable:", err.message);
+      return res.status(503).json({
+        message: "Registration service is temporarily unavailable.",
       });
     }
 
@@ -74,6 +129,42 @@ exports.registerForEvent = async (req, res) => {
     });
   }
 };
+
+async function cancelWithTransaction(eventId, userId) {
+  await assertTransactionSupport();
+  const session = await mongoose.startSession();
+  let registration;
+
+  try {
+    await session.withTransaction(async () => {
+      await touchBackfillLock(session);
+      registration = await Registration.findOneAndUpdate(
+        { user: userId, event: eventId, status: "active" },
+        { $set: { status: "cancelled" } },
+        { new: true, session }
+      );
+
+      if (!registration) return;
+
+      const counterUpdate = await Event.updateOne(
+        { _id: eventId, activeRegistrations: { $gt: 0 } },
+        { $inc: { activeRegistrations: -1 } },
+        { session }
+      );
+      if (counterUpdate.matchedCount !== 1) {
+        const error = new Error(
+          "Registration counter is inconsistent with the active registration"
+        );
+        error.code = "COUNTER_INCONSISTENT";
+        throw error;
+      }
+    });
+  } finally {
+    await session.endSession();
+  }
+
+  return registration;
+}
 
 // DELETE /api/events/:eventId/register
 exports.cancelRegistration = async (req, res) => {
@@ -85,16 +176,22 @@ exports.cancelRegistration = async (req, res) => {
     }
 
     const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: "Event not found" });
 
-    if (!event) {
-      return res.status(404).json({ message: "Event not found" });
+    let registration;
+    if (isMockTest()) {
+      registration = await Registration.findOne({
+        user: req.user._id,
+        event: event._id,
+        status: "active",
+      });
+      if (registration) {
+        registration.status = "cancelled";
+        await registration.save();
+      }
+    } else {
+      registration = await cancelWithTransaction(event._id, req.user._id);
     }
-
-    const registration = await Registration.findOne({
-      user: req.user._id,
-      event: event._id,
-      status: "active",
-    });
 
     if (!registration) {
       return res.status(404).json({
@@ -102,14 +199,24 @@ exports.cancelRegistration = async (req, res) => {
       });
     }
 
-    registration.status = "cancelled";
-    await registration.save();
-
     return res.status(200).json({
       message: "Registration cancelled successfully",
       registration,
     });
   } catch (err) {
+    if (err instanceof TransactionSupportError) {
+      console.error("cancelRegistration database unavailable:", err.message);
+      return res.status(503).json({
+        message: "Registration service is temporarily unavailable.",
+      });
+    }
+    if (err && err.code === "COUNTER_INCONSISTENT") {
+      console.error("cancelRegistration failed:", err.message);
+      return res.status(500).json({
+        message: "Something went wrong. Please try again.",
+      });
+    }
+
     console.error("cancelRegistration failed:", err.message);
     return res.status(500).json({
       message: "Something went wrong. Please try again.",

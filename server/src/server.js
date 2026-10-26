@@ -2,6 +2,11 @@ require("dotenv").config();
 
 const mongoose = require("mongoose");
 const app = require("./app");
+const Registration = require("./models/Registration");
+const {
+  assertTransactionSupport,
+  backfillRegistrationCounters,
+} = require("./db/registrationIntegrity");
 
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI;
@@ -16,6 +21,9 @@ async function startServer() {
   }
 
   await mongoose.connect(MONGO_URI);
+  await assertTransactionSupport();
+  await Registration.createIndexes();
+  await backfillRegistrationCounters();
 
   console.log("Connected to MongoDB");
 
