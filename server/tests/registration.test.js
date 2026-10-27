@@ -301,6 +301,32 @@ describe("POST /api/events/:eventId/register", () => {
       "You are already registered for this event"
     );
   });
+
+  test("transaction support unavailable -> 503", async () => {
+    asRole(ROLES.PARTICIPANT);
+    jest.spyOn(Event, "findById").mockResolvedValue(publishedEvent());
+    jest.spyOn(Registration, "findOne").mockResolvedValue(null);
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousReadyState = mongoose.connection.readyState;
+    process.env.NODE_ENV = "integration";
+    mongoose.connection.readyState = 0;
+
+    try {
+      const res = await request(app).post(path).set(auth);
+
+      expect(res.status).toBe(503);
+      expect(res.body.message).toBe(
+        "Registration service is temporarily unavailable."
+      );
+    } finally {
+      if (previousNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = previousNodeEnv;
+      }
+      mongoose.connection.readyState = previousReadyState;
+    }
+  });
 });
 
 describe("DELETE /api/events/:eventId/register", () => {
@@ -379,5 +405,56 @@ describe("DELETE /api/events/:eventId/register", () => {
     expect(res.body.message).toBe(
       "You are already registered for this event"
     );
+  });
+
+  test("counter inconsistency during cancellation -> 500", async () => {
+    asRole(ROLES.PARTICIPANT);
+    jest.spyOn(Event, "findById").mockResolvedValue(publishedEvent());
+    jest.spyOn(Registration, "findOneAndUpdate").mockResolvedValue({
+      user: userId,
+      event: eventId,
+      status: "cancelled",
+    });
+    jest.spyOn(Event, "updateOne").mockResolvedValue({ matchedCount: 0 });
+
+    const session = {
+      withTransaction: jest.fn(async (callback) => callback()),
+      endSession: jest.fn().mockResolvedValue(undefined),
+    };
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousReadyState = mongoose.connection.readyState;
+    const previousDb = mongoose.connection.db;
+    process.env.NODE_ENV = "integration";
+    mongoose.connection.readyState = 1;
+    mongoose.connection.db = {
+      admin: () => ({
+        command: jest.fn().mockResolvedValue({
+          setName: "rs-test",
+          logicalSessionTimeoutMinutes: 30,
+        }),
+      }),
+      collection: () => ({
+        updateOne: jest.fn().mockResolvedValue({ matchedCount: 1 }),
+      }),
+    };
+    jest.spyOn(mongoose, "startSession").mockResolvedValue(session);
+
+    try {
+      const res = await request(app).delete(path).set(auth);
+
+      expect(res.status).toBe(500);
+      expect(res.body.message).toBe(
+        "Something went wrong. Please try again."
+      );
+      expect(session.endSession).toHaveBeenCalledTimes(1);
+    } finally {
+      if (previousNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = previousNodeEnv;
+      }
+      mongoose.connection.readyState = previousReadyState;
+      mongoose.connection.db = previousDb;
+    }
   });
 });

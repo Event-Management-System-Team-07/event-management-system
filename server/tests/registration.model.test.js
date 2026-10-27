@@ -17,6 +17,13 @@ describe("Registration Model", () => {
     expect(registration.status).toBe("active");
   });
 
+  test("should initialize activeRegistrations to zero for new events", () => {
+    const Event = require("../src/models/Event");
+    const event = new Event();
+
+    expect(event.activeRegistrations).toBe(0);
+  });
+
   test("should accept cancelled as a valid status", () => {
     const registration = new Registration({
       status: "cancelled",

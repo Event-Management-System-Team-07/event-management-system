@@ -139,6 +139,26 @@ describeIntegration("registration MongoDB integration", () => {
     });
   });
 
+  test("simultaneous duplicate registrations allow exactly one active registration", async () => {
+    const user = createUser("concurrent-duplicate");
+    const event = createEvent(2);
+    const route = `/api/events/${event}/register`;
+
+    const responses = await Promise.all([
+      app.post(route).set(auth(user)),
+      app.post(route).set(auth(user)),
+    ]);
+
+    expect(responses.map(({ status }) => status).sort()).toEqual([201, 409]);
+    expect(
+      responses.find(({ status }) => status === 409).body.message
+    ).toBe("You are already registered for this event");
+    expect(helper({ operation: "state", eventId: event })).toEqual({
+      activeCount: 1,
+      counter: 1,
+    });
+  });
+
   test("duplicate active registration returns 409", async () => {
     const user = createUser("duplicate");
     const event = createEvent(2);
