@@ -116,3 +116,24 @@ exports.cancelRegistration = async (req, res) => {
     });
   }
 };
+
+// GET /api/events/registrations/history
+exports.getRegistrationHistory = async (req, res) => {
+  try {
+    const registrations = await Registration.find({
+      user: req.user._id,
+    })
+      .populate("event")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      registrations,
+    });
+  } catch (err) {
+    console.error("getRegistrationHistory failed:", err.message);
+
+    return res.status(500).json({
+      message: "Something went wrong. Please try again.",
+    });
+  }
+};
