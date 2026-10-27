@@ -324,46 +324,84 @@ describe("GET /api/events/registrations/history", () => {
   const activeRegistration = {
     _id: new mongoose.Types.ObjectId(),
     user: userId,
-    event: {
-      _id: eventId,
-      title: "Active Test Event",
-    },
+    event: eventId,
     status: "active",
     createdAt: new Date("2026-10-20T10:00:00.000Z"),
   };
 
+  const cancelledEventId = new mongoose.Types.ObjectId();
   const cancelledRegistration = {
     _id: new mongoose.Types.ObjectId(),
     user: userId,
-    event: {
-      _id: new mongoose.Types.ObjectId(),
-      title: "Cancelled Test Event",
-    },
+    event: cancelledEventId,
     status: "cancelled",
     createdAt: new Date("2026-10-19T10:00:00.000Z"),
   };
 
-  const mockHistoryQuery = (registrations) => {
+  const eventDetails = {
+    [eventId.toString()]: {
+      _id: eventId,
+      title: "Active Test Event",
+      description: "An active event",
+      category: "Workshop",
+      venue: "Main Hall",
+      startDate: new Date("2026-11-01T10:00:00.000Z"),
+      endDate: new Date("2026-11-01T12:00:00.000Z"),
+      capacity: 50,
+      status: "published",
+    },
+    [cancelledEventId.toString()]: {
+      _id: cancelledEventId,
+      title: "Cancelled Test Event",
+      description: "A cancelled event",
+      category: "Conference",
+      venue: "Room 2",
+      startDate: new Date("2026-10-25T10:00:00.000Z"),
+      endDate: new Date("2026-10-25T12:00:00.000Z"),
+      capacity: 25,
+      status: "cancelled",
+    },
+  };
+
+  const mockHistoryQuery = (registrations, events = {}) => {
     const query = {
       populate: jest.fn(),
       sort: jest.fn(),
     };
 
-    query.populate.mockReturnValue(query);
-    query.sort.mockResolvedValue(registrations);
+    let populatedRegistrations = registrations;
+
+    query.populate.mockImplementation((path) => {
+      if (path === "event") {
+        populatedRegistrations = registrations.map((registration) => ({
+          ...registration,
+          event: events[registration.event.toString()],
+        }));
+      }
+      return query;
+    });
+    query.sort.mockImplementation(async ({ createdAt: direction }) =>
+      populatedRegistrations
+        .slice()
+        .sort(
+          (left, right) => direction === -1
+            ? new Date(right.createdAt) - new Date(left.createdAt)
+            : new Date(left.createdAt) - new Date(right.createdAt)
+        )
+    );
 
     jest.spyOn(Registration, "find").mockReturnValue(query);
 
     return query;
   };
 
-  test("participant receives active and cancelled registrations", async () => {
+  test("participant receives newest registrations first with event details", async () => {
     asRole(ROLES.PARTICIPANT);
 
     const query = mockHistoryQuery([
-      activeRegistration,
       cancelledRegistration,
-    ]);
+      activeRegistration,
+    ], eventDetails);
 
     const res = await request(app)
       .get(historyPath)
@@ -371,10 +409,44 @@ describe("GET /api/events/registrations/history", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.registrations).toHaveLength(2);
+    expect(res.body.registrations.map((registration) => registration._id)).toEqual([
+      activeRegistration._id.toString(),
+      cancelledRegistration._id.toString(),
+    ]);
+    expect(
+      res.body.registrations.map((registration) => registration.createdAt)
+    ).toEqual([
+      activeRegistration.createdAt.toISOString(),
+      cancelledRegistration.createdAt.toISOString(),
+    ]);
     expect(res.body.registrations.map((r) => r.status)).toEqual([
       "active",
       "cancelled",
     ]);
+    expect(res.body.registrations[0].event).toMatchObject({
+      _id: eventId.toString(),
+      title: "Active Test Event",
+      description: "An active event",
+      category: "Workshop",
+      venue: "Main Hall",
+      capacity: 50,
+      status: "published",
+    });
+    expect(res.body.registrations[0].event.startDate).toBe(
+      eventDetails[eventId.toString()].startDate.toISOString()
+    );
+    expect(res.body.registrations[0].event.endDate).toBe(
+      eventDetails[eventId.toString()].endDate.toISOString()
+    );
+    expect(res.body.registrations[1].event).toMatchObject({
+      _id: cancelledEventId.toString(),
+      title: "Cancelled Test Event",
+      description: "A cancelled event",
+      category: "Conference",
+      venue: "Room 2",
+      capacity: 25,
+      status: "cancelled",
+    });
 
     expect(Registration.find).toHaveBeenCalledWith({
       user: userId,
