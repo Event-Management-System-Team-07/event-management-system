@@ -406,6 +406,209 @@ describe("DELETE /api/events/:eventId/register", () => {
       "You are already registered for this event"
     );
   });
+});
+
+describe("GET /api/events/registrations/history", () => {
+  const historyPath = "/api/events/registrations/history";
+  const anotherUserId = new mongoose.Types.ObjectId();
+
+  const activeRegistration = {
+    _id: new mongoose.Types.ObjectId(),
+    user: userId,
+    event: eventId,
+    status: "active",
+    createdAt: new Date("2026-10-20T10:00:00.000Z"),
+  };
+
+  const cancelledEventId = new mongoose.Types.ObjectId();
+  const cancelledRegistration = {
+    _id: new mongoose.Types.ObjectId(),
+    user: userId,
+    event: cancelledEventId,
+    status: "cancelled",
+    createdAt: new Date("2026-10-19T10:00:00.000Z"),
+  };
+
+  const eventDetails = {
+    [eventId.toString()]: {
+      _id: eventId,
+      title: "Active Test Event",
+      description: "An active event",
+      category: "Workshop",
+      venue: "Main Hall",
+      startDate: new Date("2026-11-01T10:00:00.000Z"),
+      endDate: new Date("2026-11-01T12:00:00.000Z"),
+      capacity: 50,
+      status: "published",
+    },
+    [cancelledEventId.toString()]: {
+      _id: cancelledEventId,
+      title: "Cancelled Test Event",
+      description: "A cancelled event",
+      category: "Conference",
+      venue: "Room 2",
+      startDate: new Date("2026-10-25T10:00:00.000Z"),
+      endDate: new Date("2026-10-25T12:00:00.000Z"),
+      capacity: 25,
+      status: "cancelled",
+    },
+  };
+
+  const mockHistoryQuery = (registrations, events = {}) => {
+    const query = {
+      populate: jest.fn(),
+      sort: jest.fn(),
+    };
+
+    let populatedRegistrations = registrations;
+
+    query.populate.mockImplementation((path) => {
+      if (path === "event") {
+        populatedRegistrations = registrations.map((registration) => ({
+          ...registration,
+          event: events[registration.event.toString()],
+        }));
+      }
+      return query;
+    });
+
+    query.sort.mockImplementation(async ({ createdAt: direction }) =>
+      populatedRegistrations
+        .slice()
+        .sort(
+          (left, right) =>
+            direction === -1
+              ? new Date(right.createdAt) - new Date(left.createdAt)
+              : new Date(left.createdAt) - new Date(right.createdAt)
+        )
+    );
+
+    jest.spyOn(Registration, "find").mockReturnValue(query);
+
+    return query;
+  };
+
+  test("participant receives newest registrations first with event details", async () => {
+    asRole(ROLES.PARTICIPANT);
+
+    const query = mockHistoryQuery(
+      [cancelledRegistration, activeRegistration],
+      eventDetails
+    );
+
+    const res = await request(app)
+      .get(historyPath)
+      .set(auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body.registrations).toHaveLength(2);
+    expect(res.body.registrations.map((registration) => registration._id)).toEqual([
+      activeRegistration._id.toString(),
+      cancelledRegistration._id.toString(),
+    ]);
+    expect(
+      res.body.registrations.map((registration) => registration.createdAt)
+    ).toEqual([
+      activeRegistration.createdAt.toISOString(),
+      cancelledRegistration.createdAt.toISOString(),
+    ]);
+    expect(res.body.registrations.map((registration) => registration.status)).toEqual([
+      "active",
+      "cancelled",
+    ]);
+    expect(res.body.registrations[0].event).toMatchObject({
+      _id: eventId.toString(),
+      title: "Active Test Event",
+      description: "An active event",
+      category: "Workshop",
+      venue: "Main Hall",
+      capacity: 50,
+      status: "published",
+    });
+    expect(res.body.registrations[0].event.startDate).toBe(
+      eventDetails[eventId.toString()].startDate.toISOString()
+    );
+    expect(res.body.registrations[0].event.endDate).toBe(
+      eventDetails[eventId.toString()].endDate.toISOString()
+    );
+    expect(res.body.registrations[1].event).toMatchObject({
+      _id: cancelledEventId.toString(),
+      title: "Cancelled Test Event",
+      description: "A cancelled event",
+      category: "Conference",
+      venue: "Room 2",
+      capacity: 25,
+      status: "cancelled",
+    });
+
+    expect(Registration.find).toHaveBeenCalledWith({ user: userId });
+    expect(query.populate).toHaveBeenCalledWith("event");
+    expect(query.sort).toHaveBeenCalledWith({ createdAt: -1 });
+  });
+
+  test("participant with no registrations receives an empty array", async () => {
+    asRole(ROLES.PARTICIPANT);
+    mockHistoryQuery([]);
+
+    const res = await request(app)
+      .get(historyPath)
+      .set(auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ registrations: [] });
+  });
+
+  test("unauthenticated request is rejected", async () => {
+    const res = await request(app).get(historyPath);
+
+    expect(res.status).toBe(401);
+  });
+
+  test("organizer cannot access participant registration history", async () => {
+    asRole(ROLES.ORGANIZER);
+
+    const res = await request(app)
+      .get(historyPath)
+      .set(auth);
+
+    expect(res.status).toBe(403);
+  });
+
+  test("history query is restricted to the authenticated participant", async () => {
+    asRole(ROLES.PARTICIPANT);
+    mockHistoryQuery([]);
+
+    const res = await request(app)
+      .get(`${historyPath}?userId=${anotherUserId}`)
+      .set(auth);
+
+    expect(res.status).toBe(200);
+    expect(Registration.find).toHaveBeenCalledWith({ user: userId });
+  });
+
+  test("database error returns 500", async () => {
+    asRole(ROLES.PARTICIPANT);
+
+    const query = {
+      populate: jest.fn(),
+      sort: jest.fn(),
+    };
+
+    query.populate.mockReturnValue(query);
+    query.sort.mockRejectedValue(new Error("Database failure"));
+
+    jest.spyOn(Registration, "find").mockReturnValue(query);
+
+    const res = await request(app)
+      .get(historyPath)
+      .set(auth);
+
+    expect(res.status).toBe(500);
+    expect(res.body.message).toBe(
+      "Something went wrong. Please try again."
+    );
+  });
+});
 
   test("counter inconsistency during cancellation -> 500", async () => {
     asRole(ROLES.PARTICIPANT);
@@ -457,4 +660,3 @@ describe("DELETE /api/events/:eventId/register", () => {
       mongoose.connection.db = previousDb;
     }
   });
-});
