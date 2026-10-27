@@ -1,5 +1,7 @@
 const mongoose = require("mongoose");
 const Event = require("../models/Event");
+const Registration = require("../models/Registration");
+const Notification = require("../models/Notification");
 const ROLES = require("../constants/roles");
 const { validateEventInput } = require("../validators/eventValidator");
 
@@ -111,7 +113,28 @@ exports.cancelEvent = async (req, res) => {
 
     event.status = "cancelled";
     await event.save();
-    return res.json({ message: "Event cancelled", event });
+
+    const registrations = await Registration.find({
+      event: event._id,
+      status: "active",
+    }).select("user");
+
+    if (registrations.length > 0) {
+      await Notification.insertMany(
+        registrations.map((registration) => ({
+          recipient: registration.user,
+          event: event._id,
+          type: "event_cancelled",
+          message: `The event "${event.title}" has been cancelled.`,
+        }))
+      );
+    }
+
+    return res.json({
+      message: "Event cancelled",
+      event,
+      notificationsCreated: registrations.length,
+    });
   } catch (err) {
     console.error("cancelEvent failed:", err.message);
     return res.status(500).json({ message: "Something went wrong. Please try again." });

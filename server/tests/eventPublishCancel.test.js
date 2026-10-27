@@ -6,6 +6,8 @@ const mongoose = require("mongoose");
 const app = require("../src/app");
 const User = require("../src/models/User");
 const Event = require("../src/models/Event");
+const Registration = require("../src/models/Registration");
+const Notification = require("../src/models/Notification");
 const ROLES = require("../src/constants/roles");
 
 process.env.JWT_SECRET = "test-secret";
@@ -41,6 +43,13 @@ const makeEvent = (overrides = {}) => {
   jest.spyOn(ev, "save").mockResolvedValue(ev);
   return ev;
 };
+
+beforeEach(() => {
+  jest.spyOn(Registration, "find").mockReturnValue({
+    select: jest.fn().mockResolvedValue([]),
+  });
+  jest.spyOn(Notification, "insertMany").mockResolvedValue([]);
+});
 
 afterEach(() => jest.restoreAllMocks());
 
@@ -143,6 +152,32 @@ describe("PATCH /api/events/:id/cancel", () => {
     expect(res.status).toBe(200);
     expect(res.body.event.status).toBe("cancelled");
     expect(ev.save).toHaveBeenCalled();
+  });
+
+  test("cancelling an event notifies its active registrants", async () => {
+    asRole(ROLES.ORGANIZER);
+    const ev = makeEvent({ status: "published" });
+    const participantId = new mongoose.Types.ObjectId();
+
+    jest.spyOn(Event, "findById").mockResolvedValue(ev);
+    Registration.find.mockReturnValue({
+      select: jest.fn().mockResolvedValue([{ user: participantId }]),
+    });
+
+    const res = await request(app)
+      .patch(`/api/events/${ev._id}/cancel`)
+      .set(auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body.notificationsCreated).toBe(1);
+    expect(Notification.insertMany).toHaveBeenCalledWith([
+      expect.objectContaining({
+        recipient: participantId,
+        event: ev._id,
+        type: "event_cancelled",
+        message: `The event "${ev.title}" has been cancelled.`,
+      }),
+    ]);
   });
 
   test("owner cancels a published event -> 200", async () => {
