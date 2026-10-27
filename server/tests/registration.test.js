@@ -1,4 +1,3 @@
-
 const request = require("supertest");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
@@ -79,9 +78,11 @@ describe("POST /api/events/:eventId/register", () => {
 
   test("invalid event ID -> 400", async () => {
     asRole(ROLES.PARTICIPANT);
+
     const res = await request(app)
       .post("/api/events/not-an-id/register")
       .set(auth);
+
     expect(res.status).toBe(400);
     expect(res.body.message).toBe("Invalid event ID");
   });
@@ -89,7 +90,9 @@ describe("POST /api/events/:eventId/register", () => {
   test("event does not exist -> 404", async () => {
     asRole(ROLES.PARTICIPANT);
     jest.spyOn(Event, "findById").mockResolvedValue(null);
+
     const res = await request(app).post(path).set(auth);
+
     expect(res.status).toBe(404);
     expect(res.body.message).toBe("Event not found");
   });
@@ -99,7 +102,9 @@ describe("POST /api/events/:eventId/register", () => {
     jest.spyOn(Event, "findById").mockResolvedValue(
       publishedEvent({ status: "draft" })
     );
+
     const res = await request(app).post(path).set(auth);
+
     expect(res.status).toBe(400);
     expect(res.body.message).toBe(
       "Registration is only available for published events"
@@ -111,7 +116,9 @@ describe("POST /api/events/:eventId/register", () => {
     jest.spyOn(Event, "findById").mockResolvedValue(
       publishedEvent({ startDate: new Date(Date.now() - 1000) })
     );
+
     const res = await request(app).post(path).set(auth);
+
     expect(res.status).toBe(400);
     expect(res.body.message).toBe("Registration deadline has passed");
   });
@@ -170,7 +177,9 @@ describe("POST /api/events/:eventId/register", () => {
     jest.spyOn(Registration, "findOne").mockResolvedValue({
       status: "active",
     });
+
     const res = await request(app).post(path).set(auth);
+
     expect(res.status).toBe(409);
     expect(res.body.message).toBe(
       "You are already registered for this event"
@@ -184,9 +193,96 @@ describe("POST /api/events/:eventId/register", () => {
     );
     jest.spyOn(Registration, "findOne").mockResolvedValue(null);
     jest.spyOn(Registration, "countDocuments").mockResolvedValue(2);
+
     const res = await request(app).post(path).set(auth);
+
     expect(res.status).toBe(409);
     expect(res.body.message).toBe("Event is full");
+  });
+
+  test("one slot remaining -> registration succeeds", async () => {
+    asRole(ROLES.PARTICIPANT);
+    jest.spyOn(Event, "findById").mockResolvedValue(publishedEvent());
+    jest.spyOn(Registration, "findOne").mockResolvedValue(null);
+    jest.spyOn(Registration, "countDocuments").mockResolvedValue(1);
+    jest.spyOn(Registration, "create").mockImplementation(async (data) => ({
+      ...data,
+      _id: new mongoose.Types.ObjectId(),
+    }));
+
+    const res = await request(app).post(path).set(auth);
+
+    expect(res.status).toBe(201);
+    expect(Registration.create).toHaveBeenCalledTimes(1);
+  });
+
+  test("active registration count filters out cancelled registrations", async () => {
+    asRole(ROLES.PARTICIPANT);
+    jest.spyOn(Event, "findById").mockResolvedValue(publishedEvent());
+
+    jest.spyOn(Registration, "findOne").mockResolvedValue(null);
+
+    const countSpy = jest
+      .spyOn(Registration, "countDocuments")
+      .mockResolvedValue(1);
+
+    jest.spyOn(Registration, "create").mockImplementation(async (data) => ({
+      ...data,
+      _id: new mongoose.Types.ObjectId(),
+    }));
+
+    const res = await request(app).post(path).set(auth);
+
+    expect(res.status).toBe(201);
+    expect(countSpy).toHaveBeenCalledWith({
+      event: eventId,
+      status: "active",
+    });
+  });
+
+  test("registration after cancellation is allowed when capacity remains", async () => {
+    asRole(ROLES.PARTICIPANT);
+    jest.spyOn(Event, "findById").mockResolvedValue(
+      publishedEvent({ capacity: 2 })
+    );
+    jest.spyOn(Registration, "findOne").mockResolvedValue(null);
+    jest.spyOn(Registration, "countDocuments").mockResolvedValue(1);
+    jest.spyOn(Registration, "create").mockImplementation(async (data) => ({
+      ...data,
+      _id: new mongoose.Types.ObjectId(),
+    }));
+
+    const res = await request(app).post(path).set(auth);
+
+    expect(res.status).toBe(201);
+    expect(Registration.countDocuments).toHaveBeenCalledWith({
+      event: eventId,
+      status: "active",
+    });
+  });
+
+  test("registration is rejected when active registrations equal capacity", async () => {
+    asRole(ROLES.PARTICIPANT);
+    jest.spyOn(Event, "findById").mockResolvedValue(
+      publishedEvent({ capacity: 2 })
+    );
+    jest.spyOn(Registration, "findOne").mockResolvedValue(null);
+
+    const countSpy = jest
+      .spyOn(Registration, "countDocuments")
+      .mockResolvedValue(2);
+
+    const createSpy = jest.spyOn(Registration, "create");
+
+    const res = await request(app).post(path).set(auth);
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe("Event is full");
+    expect(countSpy).toHaveBeenCalledWith({
+      event: eventId,
+      status: "active",
+    });
+    expect(createSpy).not.toHaveBeenCalled();
   });
 
   test("database duplicate-key error -> 409", async () => {
@@ -204,6 +300,32 @@ describe("POST /api/events/:eventId/register", () => {
     expect(res.body.message).toBe(
       "You are already registered for this event"
     );
+  });
+
+  test("transaction support unavailable -> 503", async () => {
+    asRole(ROLES.PARTICIPANT);
+    jest.spyOn(Event, "findById").mockResolvedValue(publishedEvent());
+    jest.spyOn(Registration, "findOne").mockResolvedValue(null);
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousReadyState = mongoose.connection.readyState;
+    process.env.NODE_ENV = "integration";
+    mongoose.connection.readyState = 0;
+
+    try {
+      const res = await request(app).post(path).set(auth);
+
+      expect(res.status).toBe(503);
+      expect(res.body.message).toBe(
+        "Registration service is temporarily unavailable."
+      );
+    } finally {
+      if (previousNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = previousNodeEnv;
+      }
+      mongoose.connection.readyState = previousReadyState;
+    }
   });
 });
 
@@ -238,9 +360,11 @@ describe("DELETE /api/events/:eventId/register", () => {
 
   test("invalid event ID when cancelling -> 400", async () => {
     asRole(ROLES.PARTICIPANT);
+
     const res = await request(app)
       .delete("/api/events/not-an-id/register")
       .set(auth);
+
     expect(res.status).toBe(400);
     expect(res.body.message).toBe("Invalid event ID");
   });
@@ -248,7 +372,9 @@ describe("DELETE /api/events/:eventId/register", () => {
   test("event does not exist when cancelling -> 404", async () => {
     asRole(ROLES.PARTICIPANT);
     jest.spyOn(Event, "findById").mockResolvedValue(null);
+
     const res = await request(app).delete(path).set(auth);
+
     expect(res.status).toBe(404);
     expect(res.body.message).toBe("Event not found");
   });
@@ -257,48 +383,13 @@ describe("DELETE /api/events/:eventId/register", () => {
     asRole(ROLES.PARTICIPANT);
     jest.spyOn(Event, "findById").mockResolvedValue(publishedEvent());
     jest.spyOn(Registration, "findOne").mockResolvedValue(null);
+
     const res = await request(app).delete(path).set(auth);
+
     expect(res.status).toBe(404);
     expect(res.body.message).toBe(
       "No active registration found for this event"
     );
-  });
-
-  test("one slot remaining -> registration succeeds", async () => {
-    asRole(ROLES.PARTICIPANT);
-    jest.spyOn(Event, "findById").mockResolvedValue(publishedEvent());
-    jest.spyOn(Registration, "findOne").mockResolvedValue(null);
-    jest.spyOn(Registration, "countDocuments").mockResolvedValue(1);
-    jest.spyOn(Registration, "create").mockImplementation(async (data) => ({
-      ...data,
-      _id: new mongoose.Types.ObjectId(),
-    }));
-
-    const res = await request(app).post(path).set(auth);
-
-    expect(res.status).toBe(201);
-    expect(Registration.create).toHaveBeenCalledTimes(1);
-  });
-
-  test("active registration count filters out cancelled registrations", async () => {
-    asRole(ROLES.PARTICIPANT);
-    jest.spyOn(Event, "findById").mockResolvedValue(publishedEvent());
-    jest.spyOn(Registration, "findOne").mockResolvedValue(null);
-    const countSpy = jest
-      .spyOn(Registration, "countDocuments")
-      .mockResolvedValue(1);
-    jest.spyOn(Registration, "create").mockImplementation(async (data) => ({
-      ...data,
-      _id: new mongoose.Types.ObjectId(),
-    }));
-
-    const res = await request(app).post(path).set(auth);
-
-    expect(res.status).toBe(201);
-    expect(countSpy).toHaveBeenCalledWith({
-      event: eventId,
-      status: "active",
-    });
   });
 
   test("duplicate-key database error -> 409", async () => {
@@ -380,13 +471,15 @@ describe("GET /api/events/registrations/history", () => {
       }
       return query;
     });
+
     query.sort.mockImplementation(async ({ createdAt: direction }) =>
       populatedRegistrations
         .slice()
         .sort(
-          (left, right) => direction === -1
-            ? new Date(right.createdAt) - new Date(left.createdAt)
-            : new Date(left.createdAt) - new Date(right.createdAt)
+          (left, right) =>
+            direction === -1
+              ? new Date(right.createdAt) - new Date(left.createdAt)
+              : new Date(left.createdAt) - new Date(right.createdAt)
         )
     );
 
@@ -398,10 +491,10 @@ describe("GET /api/events/registrations/history", () => {
   test("participant receives newest registrations first with event details", async () => {
     asRole(ROLES.PARTICIPANT);
 
-    const query = mockHistoryQuery([
-      cancelledRegistration,
-      activeRegistration,
-    ], eventDetails);
+    const query = mockHistoryQuery(
+      [cancelledRegistration, activeRegistration],
+      eventDetails
+    );
 
     const res = await request(app)
       .get(historyPath)
@@ -419,7 +512,7 @@ describe("GET /api/events/registrations/history", () => {
       activeRegistration.createdAt.toISOString(),
       cancelledRegistration.createdAt.toISOString(),
     ]);
-    expect(res.body.registrations.map((r) => r.status)).toEqual([
+    expect(res.body.registrations.map((registration) => registration.status)).toEqual([
       "active",
       "cancelled",
     ]);
@@ -448,9 +541,7 @@ describe("GET /api/events/registrations/history", () => {
       status: "cancelled",
     });
 
-    expect(Registration.find).toHaveBeenCalledWith({
-      user: userId,
-    });
+    expect(Registration.find).toHaveBeenCalledWith({ user: userId });
     expect(query.populate).toHaveBeenCalledWith("event");
     expect(query.sort).toHaveBeenCalledWith({ createdAt: -1 });
   });
@@ -492,9 +583,7 @@ describe("GET /api/events/registrations/history", () => {
       .set(auth);
 
     expect(res.status).toBe(200);
-    expect(Registration.find).toHaveBeenCalledWith({
-      user: userId,
-    });
+    expect(Registration.find).toHaveBeenCalledWith({ user: userId });
   });
 
   test("database error returns 500", async () => {
@@ -520,3 +609,54 @@ describe("GET /api/events/registrations/history", () => {
     );
   });
 });
+
+  test("counter inconsistency during cancellation -> 500", async () => {
+    asRole(ROLES.PARTICIPANT);
+    jest.spyOn(Event, "findById").mockResolvedValue(publishedEvent());
+    jest.spyOn(Registration, "findOneAndUpdate").mockResolvedValue({
+      user: userId,
+      event: eventId,
+      status: "cancelled",
+    });
+    jest.spyOn(Event, "updateOne").mockResolvedValue({ matchedCount: 0 });
+
+    const session = {
+      withTransaction: jest.fn(async (callback) => callback()),
+      endSession: jest.fn().mockResolvedValue(undefined),
+    };
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousReadyState = mongoose.connection.readyState;
+    const previousDb = mongoose.connection.db;
+    process.env.NODE_ENV = "integration";
+    mongoose.connection.readyState = 1;
+    mongoose.connection.db = {
+      admin: () => ({
+        command: jest.fn().mockResolvedValue({
+          setName: "rs-test",
+          logicalSessionTimeoutMinutes: 30,
+        }),
+      }),
+      collection: () => ({
+        updateOne: jest.fn().mockResolvedValue({ matchedCount: 1 }),
+      }),
+    };
+    jest.spyOn(mongoose, "startSession").mockResolvedValue(session);
+
+    try {
+      const res = await request(app).delete(path).set(auth);
+
+      expect(res.status).toBe(500);
+      expect(res.body.message).toBe(
+        "Something went wrong. Please try again."
+      );
+      expect(session.endSession).toHaveBeenCalledTimes(1);
+    } finally {
+      if (previousNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = previousNodeEnv;
+      }
+      mongoose.connection.readyState = previousReadyState;
+      mongoose.connection.db = previousDb;
+    }
+  });

@@ -9,6 +9,17 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    container: node:20-bookworm
+
+    services:
+      mongodb:
+        image: mongo:7
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+        command: mongod --replSet rs-data01-test --bind_ip_all
 
     steps:
       - name: Checkout repository
@@ -31,6 +42,90 @@ jobs:
         working-directory: client
         run: npm run build
 
-      - name: Run backend tests
+      - name: Initialize MongoDB replica set
+        run: |
+          node <<'NODE'
+          const { MongoClient } = require("./server/node_modules/mongodb");
+
+          const uri = "mongodb://mongodb:27017/?directConnection=true";
+          const client = new MongoClient(uri, { serverSelectionTimeoutMS: 10000 });
+
+          async function waitForServer() {
+            for (let attempt = 0; attempt < 30; attempt += 1) {
+              try {
+                await client.db("admin").command({ ping: 1 });
+                return;
+              } catch {}
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+            throw new Error("MongoDB service did not become ready");
+          }
+
+          async function main() {
+            try {
+              await client.connect();
+              await waitForServer();
+              await client.db("admin").command({
+                replSetInitiate: {
+                  _id: "rs-data01-test",
+                  members: [{ _id: 0, host: "mongodb:27017" }],
+                },
+              });
+            } catch (error) {
+              if (error.codeName !== "AlreadyInitialized") throw error;
+            } finally {
+              await client.close();
+            }
+          }
+
+          main().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
+
+          node <<'NODE'
+          const { MongoClient } = require("./server/node_modules/mongodb");
+
+          const client = new MongoClient("mongodb://mongodb:27017/?replicaSet=rs-data01-test", {
+            serverSelectionTimeoutMS: 5000,
+          });
+
+          async function main() {
+            try {
+              await client.connect();
+              for (let attempt = 0; attempt < 30; attempt += 1) {
+                try {
+                  const hello = await client.db("admin").command({ hello: 1 });
+                  if (hello.setName === "rs-data01-test" && hello.isWritablePrimary) {
+                    return;
+                  }
+                } catch {}
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+              }
+              throw new Error("MongoDB replica set was not ready for clients");
+            } finally {
+              await client.close();
+            }
+          }
+
+          main().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
+
+      - name: Run backend unit tests
         working-directory: server
         run: npm test
+        env:
+          RUN_MONGO_INTEGRATION: "0"
+
+      - name: Run MongoDB integration tests
+        working-directory: server
+        run: npm test -- --runTestsByPath tests/registration.integration.test.js
+        env:
+          RUN_MONGO_INTEGRATION: "1"
+          MONGO_INTEGRATION_URI: mongodb://mongodb:27017/event-management-data01-test?replicaSet=rs-data01-test&retryWrites=false
+          MONGO_URI: mongodb://mongodb:27017/event-management-data01-test?replicaSet=rs-data01-test&retryWrites=false
+          JWT_SECRET: integration-test-secret

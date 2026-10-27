@@ -9,6 +9,7 @@ const eventSchema = new mongoose.Schema(
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },
     capacity: { type: Number, required: true, min: 1 },
+    activeRegistrations: { type: Number, required: true, default: 0, min: 0 },
     status: {
       type: String,
       enum: ['draft', 'published', 'cancelled'],
