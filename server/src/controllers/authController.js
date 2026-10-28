@@ -63,6 +63,7 @@ async function register(req, res) {
       passwordHash,
       role: userRole,
     });
+    logger.info("auth.registration_succeeded", { actorId: user._id.toString() });
 
     return res.status(201).json({ message: "Registration successful", user });
   } catch (err) {
@@ -90,6 +91,7 @@ async function login(req, res) {
 
     // Same message whether the email or the password was wrong
     if (!passwordMatches) {
+      logger.warn("auth.login_rejected", { reason: "invalid_credentials" });
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
@@ -97,6 +99,7 @@ async function login(req, res) {
     const token = jwt.sign({ sub: user._id.toString() }, process.env.JWT_SECRET, {
       expiresIn: process.env.JWT_EXPIRES_IN || "1d",
     });
+    logger.info("auth.login_succeeded", { actorId: user._id.toString() });
 
     return res.status(200).json({ message: "Login successful", token, user });
   } catch (err) {
