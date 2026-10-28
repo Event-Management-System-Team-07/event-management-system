@@ -2,6 +2,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const ROLES = require("../constants/roles");
+const logger = require("../utils/logger");
 
 // Roles a person may pick for themselves at sign-up. Admin is never self-registered.
 const SELF_REGISTER_ROLES = [ROLES.PARTICIPANT, ROLES.ORGANIZER];
@@ -69,7 +70,7 @@ async function register(req, res) {
     if (err && err.code === 11000) {
       return res.status(409).json({ message: "An account with this email already exists" });
     }
-    console.error("register failed:", err.message);
+    logger.error("auth.register_failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 }
@@ -99,7 +100,7 @@ async function login(req, res) {
 
     return res.status(200).json({ message: "Login successful", token, user });
   } catch (err) {
-    console.error("login failed:", err.message);
+    logger.error("auth.login_failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 }

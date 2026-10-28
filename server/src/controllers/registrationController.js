@@ -7,6 +7,7 @@ const {
   isMockTest,
   touchBackfillLock,
 } = require("../db/registrationIntegrity");
+const logger = require("../utils/logger");
 
 const duplicateRegistrationResponse = (res) =>
   res.status(409).json({
@@ -117,13 +118,13 @@ exports.registerForEvent = async (req, res) => {
       return res.status(409).json({ message: "Event is full" });
     }
     if (err instanceof TransactionSupportError) {
-      console.error("registerForEvent database unavailable:", err.message);
+      logger.error("registrations.register_database_unavailable", err);
       return res.status(503).json({
         message: "Registration service is temporarily unavailable.",
       });
     }
 
-    console.error("registerForEvent failed:", err.message);
+    logger.error("registrations.register_failed", err);
     return res.status(500).json({
       message: "Something went wrong. Please try again.",
     });
@@ -205,19 +206,19 @@ exports.cancelRegistration = async (req, res) => {
     });
   } catch (err) {
     if (err instanceof TransactionSupportError) {
-      console.error("cancelRegistration database unavailable:", err.message);
+      logger.error("registrations.cancel_database_unavailable", err);
       return res.status(503).json({
         message: "Registration service is temporarily unavailable.",
       });
     }
     if (err && err.code === "COUNTER_INCONSISTENT") {
-      console.error("cancelRegistration failed:", err.message);
+      logger.error("registrations.cancel_failed", err);
       return res.status(500).json({
         message: "Something went wrong. Please try again.",
       });
     }
 
-    console.error("cancelRegistration failed:", err.message);
+    logger.error("registrations.cancel_failed", err);
     return res.status(500).json({
       message: "Something went wrong. Please try again.",
     });
@@ -237,7 +238,7 @@ exports.getRegistrationHistory = async (req, res) => {
       registrations,
     });
   } catch (err) {
-    console.error("getRegistrationHistory failed:", err.message);
+    logger.error("registrations.history_failed", err);
 
     return res.status(500).json({
       message: "Something went wrong. Please try again.",

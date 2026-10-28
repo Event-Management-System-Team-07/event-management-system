@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Event = require("../models/Event");
 const ROLES = require("../constants/roles");
 const { validateEventInput } = require("../validators/eventValidator");
+const logger = require("../utils/logger");
 
 // Only these fields can be set by the client (organizer and status are controlled by the server).
 const EDITABLE = ["title", "description", "category", "venue", "startDate", "endDate", "capacity"];
@@ -22,7 +23,7 @@ exports.createEvent = async (req, res) => {
     });
     return res.status(201).json({ message: "Event created", event });
   } catch (err) {
-    console.error("createEvent failed:", err.message);
+    logger.error("events.create_failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 };
@@ -53,7 +54,7 @@ exports.updateEvent = async (req, res) => {
     await event.save();
     return res.json({ message: "Event updated", event });
   } catch (err) {
-    console.error("updateEvent failed:", err.message);
+    logger.error("events.update_failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 };
@@ -95,7 +96,7 @@ exports.publishEvent = async (req, res) => {
     await event.save();
     return res.json({ message: "Event published", event });
   } catch (err) {
-    console.error("publishEvent failed:", err.message);
+    logger.error("events.publish_failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 };
@@ -113,7 +114,7 @@ exports.cancelEvent = async (req, res) => {
     await event.save();
     return res.json({ message: "Event cancelled", event });
   } catch (err) {
-    console.error("cancelEvent failed:", err.message);
+    logger.error("events.cancel_failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 };
