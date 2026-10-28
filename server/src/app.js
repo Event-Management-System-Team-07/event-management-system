@@ -3,10 +3,12 @@ const authRoutes = require("./routes/authRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const eventBrowseRoutes = require("./routes/eventBrowseRoutes");
 const registrationRoutes = require("./routes/registrationRoutes");
+const { rejectUnsafeInput, handleBodyParseErrors } = require("./middleware/inputValidation");
 
 const app = express();
 
 app.use(express.json());
+app.use(rejectUnsafeInput);
 
 app.get("/api/health", (req, res) => {
   res.status(200).json({
@@ -18,6 +20,9 @@ app.use("/api/auth", authRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/events", eventBrowseRoutes);
 app.use("/api/events", registrationRoutes);
+
+// Must stay AFTER the routes: turns bad-JSON / too-large body errors into clean JSON responses
+app.use(handleBodyParseErrors);
 
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
