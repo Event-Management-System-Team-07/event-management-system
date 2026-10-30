@@ -3,6 +3,7 @@ const authRoutes = require("./routes/authRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const eventBrowseRoutes = require("./routes/eventBrowseRoutes");
 const registrationRoutes = require("./routes/registrationRoutes");
+const logger = require("./utils/logger");
 
 const app = express();
 
@@ -23,7 +24,7 @@ if (require.main === module) {
   const PORT = process.env.PORT || 5000;
 
   app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    logger.info("server.listening", { port: Number(PORT) });
   });
 }
 
