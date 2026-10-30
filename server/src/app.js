@@ -3,8 +3,12 @@ const authRoutes = require("./routes/authRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const eventBrowseRoutes = require("./routes/eventBrowseRoutes");
 const registrationRoutes = require("./routes/registrationRoutes");
+const { notFound, errorHandler } = require("./middleware/errorHandler");
 
 const app = express();
+
+// SEC-03: do not advertise the framework in the X-Powered-By header
+app.disable("x-powered-by");
 
 app.use(express.json());
 
@@ -18,6 +22,10 @@ app.use("/api/auth", authRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/events", eventBrowseRoutes);
 app.use("/api/events", registrationRoutes);
+
+// SEC-03: must stay last. Unknown routes and all errors return generic JSON.
+app.use(notFound);
+app.use(errorHandler);
 
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
