@@ -3,6 +3,7 @@
 const request = require("supertest");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
+jest.mock("../src/services/auditLogger", () => ({ recordEventAction: jest.fn().mockResolvedValue(null) }));
 const app = require("../src/app");
 const User = require("../src/models/User");
 const Event = require("../src/models/Event");

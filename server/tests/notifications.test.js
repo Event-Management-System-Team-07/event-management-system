@@ -68,6 +68,23 @@ describe("GET /api/notifications", () => {
     expect(query.sort).toHaveBeenCalledWith({ createdAt: -1 });
   });
 
+  test("participant receives an empty list when they have no notifications", async () => {
+    asRole(ROLES.PARTICIPANT);
+
+    const query = {
+      populate: jest.fn(),
+      sort: jest.fn().mockResolvedValue([]),
+    };
+    query.populate.mockReturnValue(query);
+    jest.spyOn(Notification, "find").mockReturnValue(query);
+
+    const res = await request(app).get("/api/notifications").set(auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body.notifications).toEqual([]);
+    expect(Notification.find).toHaveBeenCalledWith({ recipient: userId });
+  });
+
   test("unauthenticated requests are rejected", async () => {
     const res = await request(app).get("/api/notifications");
     expect(res.status).toBe(401);
