@@ -3,7 +3,11 @@ const authRoutes = require("./routes/authRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const eventBrowseRoutes = require("./routes/eventBrowseRoutes");
 const registrationRoutes = require("./routes/registrationRoutes");
+
+const adminEventRoutes = require("./routes/adminEventRoutes");
+
 const notificationRoutes = require("./routes/notificationRoutes");
+
 
 const app = express();
 
@@ -19,7 +23,11 @@ app.use("/api/auth", authRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/events", eventBrowseRoutes);
 app.use("/api/events", registrationRoutes);
+
+app.use("/api/admin/events", adminEventRoutes);
+
 app.use("/api/notifications", notificationRoutes);
+
 
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
