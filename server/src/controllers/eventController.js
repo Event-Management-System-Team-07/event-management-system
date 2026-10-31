@@ -5,6 +5,7 @@ const Notification = require("../models/Notification");
 const ROLES = require("../constants/roles");
 const { validateEventInput } = require("../validators/eventValidator");
 const { recordEventAction } = require("../services/auditLogger");
+const { logError } = require("../utils/safeLogger");
 
 // Only these fields can be set by the client (organizer and status are controlled by the server).
 const EDITABLE = ["title", "description", "category", "venue", "startDate", "endDate", "capacity"];
@@ -26,7 +27,7 @@ exports.createEvent = async (req, res) => {
     await recordEventAction({ actorId: req.user._id, action: "event.created", eventId: event._id });
     return res.status(201).json({ message: "Event created", event });
   } catch (err) {
-    console.error("createEvent failed:", err.message);
+    logError("createEvent.failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 };
@@ -58,7 +59,7 @@ exports.updateEvent = async (req, res) => {
     await recordEventAction({ actorId: req.user._id, action: "event.updated", eventId: event._id });
     return res.json({ message: "Event updated", event });
   } catch (err) {
-    console.error("updateEvent failed:", err.message);
+    logError("updateEvent.failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 };
@@ -101,7 +102,7 @@ exports.publishEvent = async (req, res) => {
     await recordEventAction({ actorId: req.user._id, action: "event.published", eventId: event._id });
     return res.json({ message: "Event published", event });
   } catch (err) {
-    console.error("publishEvent failed:", err.message);
+    logError("publishEvent.failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 };
@@ -165,7 +166,7 @@ exports.cancelEvent = async (req, res) => {
     if (err && err.code === "EVENT_ALREADY_CANCELLED") {
       return res.status(409).json({ message: "Event is already cancelled" });
     }
-    console.error("cancelEvent failed:", err.message);
+    logError("cancelEvent.failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 };

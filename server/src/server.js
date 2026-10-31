@@ -7,6 +7,7 @@ const {
   assertTransactionSupport,
   backfillRegistrationCounters,
 } = require("./db/registrationIntegrity");
+const { logError } = require("./utils/safeLogger");
 
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI;
@@ -33,6 +34,6 @@ async function startServer() {
 }
 
 startServer().catch((error) => {
-  console.error("Failed to start server:", error.message);
+  logError("server.start_failed", error);
   process.exitCode = 1;
 });

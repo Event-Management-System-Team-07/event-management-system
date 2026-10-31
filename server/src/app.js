@@ -4,9 +4,13 @@ const eventRoutes = require("./routes/eventRoutes");
 const eventBrowseRoutes = require("./routes/eventBrowseRoutes");
 const registrationRoutes = require("./routes/registrationRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
+const { notFound, errorHandler } = require("./middleware/errorHandler");
 const { rejectUnsafeInput, handleBodyParseErrors } = require("./middleware/inputValidation");
 
 const app = express();
+
+// SEC-03: do not advertise the framework in the X-Powered-By header
+app.disable("x-powered-by");
 
 app.use(express.json());
 app.use(rejectUnsafeInput);
@@ -23,8 +27,12 @@ app.use("/api/events", eventBrowseRoutes);
 app.use("/api/events", registrationRoutes);
 app.use("/api/notifications", notificationRoutes);
 
-// Must stay AFTER the routes: turns bad-JSON / too-large body errors into clean JSON responses
+// SEC-02: must stay AFTER the routes: turns bad-JSON / too-large body errors into clean JSON responses
 app.use(handleBodyParseErrors);
+
+// SEC-03: must stay last. Unknown routes and all errors return generic JSON.
+app.use(notFound);
+app.use(errorHandler);
 
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
