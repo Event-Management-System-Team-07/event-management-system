@@ -1,4 +1,5 @@
 const Notification = require("../models/Notification");
+const { logError } = require("../utils/safeLogger");
 
 // GET /api/notifications
 exports.getMyNotifications = async (req, res) => {
@@ -11,7 +12,7 @@ exports.getMyNotifications = async (req, res) => {
 
     return res.status(200).json({ notifications });
   } catch (err) {
-    console.error("getMyNotifications failed:", err.message);
+    logError("getMyNotifications.failed", err);
     return res.status(500).json({
       message: "Something went wrong. Please try again.",
     });
