@@ -7,15 +7,18 @@ const registrationRoutes = require("./routes/registrationRoutes");
 const adminUserRoutes = require("./routes/adminUserRoutes");
 
 const notificationRoutes = require("./routes/notificationRoutes");
-
+const { notFound, errorHandler } = require("./middleware/errorHandler");
 
 const app = express();
+
+// SEC-03: do not advertise the framework in the X-Powered-By header
+app.disable("x-powered-by");
 
 app.use(express.json());
 
 app.get("/api/health", (req, res) => {
   res.status(200).json({
-    status: "OK"
+    status: "OK",
   });
 });
 
@@ -28,6 +31,9 @@ app.use("/api/admin/users", adminUserRoutes);
 
 app.use("/api/notifications", notificationRoutes);
 
+// SEC-03: must stay last. Unknown routes and all errors return generic JSON.
+app.use(notFound);
+app.use(errorHandler);
 
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
