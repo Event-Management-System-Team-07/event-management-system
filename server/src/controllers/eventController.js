@@ -1,5 +1,7 @@
 const mongoose = require("mongoose");
 const Event = require("../models/Event");
+const Registration = require("../models/Registration");
+const Notification = require("../models/Notification");
 const ROLES = require("../constants/roles");
 const { validateEventInput } = require("../validators/eventValidator");
 const { recordEventAction } = require("../services/auditLogger");
@@ -114,11 +116,56 @@ exports.cancelEvent = async (req, res) => {
     if (event.status === "cancelled")
       return res.status(409).json({ message: "Event is already cancelled" });
 
+    const session = await mongoose.startSession();
+    let registrations = [];
+
+    try {
+      await session.withTransaction(async () => {
+        registrations = await Registration.find({
+          event: event._id,
+          status: "active",
+        })
+          .select("user")
+          .session(session);
+
+        if (registrations.length > 0) {
+          await Notification.insertMany(
+            registrations.map((registration) => ({
+              recipient: registration.user,
+              event: event._id,
+              type: "event_cancelled",
+              message: `The event "${event.title}" has been cancelled.`,
+            })),
+            { session }
+          );
+        }
+
+        const update = await Event.updateOne(
+          { _id: event._id, status: { $ne: "cancelled" } },
+          { $set: { status: "cancelled" } },
+          { session }
+        );
+        if (update.matchedCount !== 1) {
+          const error = new Error("Event is already cancelled");
+          error.code = "EVENT_ALREADY_CANCELLED";
+          throw error;
+        }
+      });
+    } finally {
+      await session.endSession();
+    }
+
     event.status = "cancelled";
-    await event.save();
     await recordEventAction({ actorId: req.user._id, action: "event.cancelled", eventId: event._id });
-    return res.json({ message: "Event cancelled", event });
+    return res.json({
+      message: "Event cancelled",
+      event,
+      notificationsCreated: registrations.length,
+    });
   } catch (err) {
+    if (err && err.code === "EVENT_ALREADY_CANCELLED") {
+      return res.status(409).json({ message: "Event is already cancelled" });
+    }
     logError("cancelEvent.failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }

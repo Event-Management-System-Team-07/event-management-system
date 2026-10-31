@@ -3,6 +3,7 @@ const authRoutes = require("./routes/authRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const eventBrowseRoutes = require("./routes/eventBrowseRoutes");
 const registrationRoutes = require("./routes/registrationRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
 
 const app = express();
@@ -22,6 +23,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/events", eventBrowseRoutes);
 app.use("/api/events", registrationRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // SEC-03: must stay last. Unknown routes and all errors return generic JSON.
 app.use(notFound);
