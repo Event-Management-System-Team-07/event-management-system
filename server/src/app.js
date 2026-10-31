@@ -3,6 +3,7 @@ const authRoutes = require("./routes/authRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const eventBrowseRoutes = require("./routes/eventBrowseRoutes");
 const registrationRoutes = require("./routes/registrationRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 const { rejectUnsafeInput, handleBodyParseErrors } = require("./middleware/inputValidation");
 
 const app = express();
@@ -20,6 +21,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/events", eventBrowseRoutes);
 app.use("/api/events", registrationRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // Must stay AFTER the routes: turns bad-JSON / too-large body errors into clean JSON responses
 app.use(handleBodyParseErrors);
