@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const ROLES = require("../constants/roles");
+const logger = require("../utils/logger");
 const { hashPassword, verifyPassword } = require("../utils/password");
 
 // Roles a person may pick for themselves at sign-up. Admin is never self-registered.
@@ -61,6 +62,7 @@ async function register(req, res) {
       passwordHash,
       role: userRole,
     });
+    logger.info("auth.registration_succeeded", { actorId: user._id.toString() });
 
     return res.status(201).json({ message: "Registration successful", user });
   } catch (err) {
@@ -68,7 +70,7 @@ async function register(req, res) {
     if (err && err.code === 11000) {
       return res.status(409).json({ message: "An account with this email already exists" });
     }
-    console.error("register failed:", err.message);
+    logger.error("auth.register_failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 }
@@ -89,6 +91,7 @@ async function login(req, res) {
 
     // Same message whether the email or the password was wrong
     if (!passwordMatches) {
+      logger.warn("auth.login_rejected", { reason: "invalid_credentials" });
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
@@ -96,10 +99,11 @@ async function login(req, res) {
     const token = jwt.sign({ sub: user._id.toString() }, process.env.JWT_SECRET, {
       expiresIn: process.env.JWT_EXPIRES_IN || "1d",
     });
+    logger.info("auth.login_succeeded", { actorId: user._id.toString() });
 
     return res.status(200).json({ message: "Login successful", token, user });
   } catch (err) {
-    console.error("login failed:", err.message);
+    logger.error("auth.login_failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 }
