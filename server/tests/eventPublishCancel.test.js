@@ -3,10 +3,14 @@
 const request = require("supertest");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
+jest.mock("../src/services/auditLogger", () => ({ recordEventAction: jest.fn().mockResolvedValue(null) }));
 const app = require("../src/app");
 const User = require("../src/models/User");
 const Event = require("../src/models/Event");
+const Registration = require("../src/models/Registration");
+const Notification = require("../src/models/Notification");
 const ROLES = require("../src/constants/roles");
+const { recordEventAction } = require("../src/services/auditLogger");
 
 process.env.JWT_SECRET = "test-secret";
 
@@ -41,6 +45,24 @@ const makeEvent = (overrides = {}) => {
   jest.spyOn(ev, "save").mockResolvedValue(ev);
   return ev;
 };
+
+let transactionSession;
+
+beforeEach(() => {
+  recordEventAction.mockClear();
+  const registrationQuery = {
+    select: jest.fn().mockReturnThis(),
+    session: jest.fn().mockResolvedValue([]),
+  };
+  jest.spyOn(Registration, "find").mockReturnValue(registrationQuery);
+  jest.spyOn(Notification, "insertMany").mockResolvedValue([]);
+  jest.spyOn(Event, "updateOne").mockResolvedValue({ matchedCount: 1 });
+  transactionSession = {
+    withTransaction: jest.fn(async (callback) => callback()),
+    endSession: jest.fn().mockResolvedValue(undefined),
+  };
+  jest.spyOn(mongoose, "startSession").mockResolvedValue(transactionSession);
+});
 
 afterEach(() => jest.restoreAllMocks());
 
@@ -142,7 +164,87 @@ describe("PATCH /api/events/:id/cancel", () => {
     const res = await request(app).patch(`/api/events/${ev._id}/cancel`).set(auth);
     expect(res.status).toBe(200);
     expect(res.body.event.status).toBe("cancelled");
-    expect(ev.save).toHaveBeenCalled();
+    expect(res.body.notificationsCreated).toBe(0);
+    expect(Notification.insertMany).not.toHaveBeenCalled();
+    expect(Event.updateOne).toHaveBeenCalledWith(
+      { _id: ev._id, status: { $ne: "cancelled" } },
+      { $set: { status: "cancelled" } },
+      { session: transactionSession }
+    );
+  });
+
+  test("cancelling an event notifies multiple active registrants", async () => {
+    asRole(ROLES.ORGANIZER);
+    const ev = makeEvent({ status: "published" });
+    const participantIds = [new mongoose.Types.ObjectId(), new mongoose.Types.ObjectId()];
+
+    jest.spyOn(Event, "findById").mockResolvedValue(ev);
+    Registration.find.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      session: jest.fn().mockResolvedValue(participantIds.map((user) => ({ user }))),
+    });
+
+    const res = await request(app)
+      .patch(`/api/events/${ev._id}/cancel`)
+      .set(auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body.notificationsCreated).toBe(2);
+    expect(Registration.find).toHaveBeenCalledWith({ event: ev._id, status: "active" });
+    const [notifications, options] = Notification.insertMany.mock.calls[0];
+    expect(notifications).toHaveLength(2);
+    expect(notifications.map(({ recipient }) => recipient)).toEqual(participantIds);
+    expect(notifications).toEqual(
+      participantIds.map((recipient) =>
+        expect.objectContaining({
+          recipient,
+          event: ev._id,
+          type: "event_cancelled",
+          message: `The event "${ev.title}" has been cancelled.`,
+        }),
+      ),
+    );
+    expect(options).toEqual({ session: transactionSession });
+  });
+
+  test("does not notify cancelled registrations", async () => {
+    asRole(ROLES.ORGANIZER);
+    const ev = makeEvent({ status: "published" });
+    const activeParticipantId = new mongoose.Types.ObjectId();
+
+    jest.spyOn(Event, "findById").mockResolvedValue(ev);
+    Registration.find.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      session: jest.fn().mockResolvedValue([{ user: activeParticipantId }]),
+    });
+
+    const res = await request(app).patch(`/api/events/${ev._id}/cancel`).set(auth);
+
+    expect(res.status).toBe(200);
+    expect(Registration.find).toHaveBeenCalledWith({ event: ev._id, status: "active" });
+    expect(Notification.insertMany.mock.calls[0][0].map(({ recipient }) => recipient)).toEqual([
+      activeParticipantId,
+    ]);
+  });
+
+  test("notification insertion failure leaves the event unchanged", async () => {
+    asRole(ROLES.ORGANIZER);
+    const ev = makeEvent({ status: "published" });
+    jest.spyOn(Event, "findById").mockResolvedValue(ev);
+    Registration.find.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      session: jest.fn().mockResolvedValue([{ user: new mongoose.Types.ObjectId() }]),
+    });
+    Notification.insertMany.mockRejectedValue(new Error("database details must stay private"));
+
+    const res = await request(app).patch(`/api/events/${ev._id}/cancel`).set(auth);
+
+    expect(res.status).toBe(500);
+    expect(res.body.message).toBe("Something went wrong. Please try again.");
+    expect(ev.status).toBe("published");
+    expect(Event.updateOne).not.toHaveBeenCalled();
+    expect(recordEventAction).not.toHaveBeenCalled();
+    expect(transactionSession.endSession).toHaveBeenCalledTimes(1);
   });
 
   test("owner cancels a published event -> 200", async () => {
@@ -152,6 +254,7 @@ describe("PATCH /api/events/:id/cancel", () => {
     const res = await request(app).patch(`/api/events/${ev._id}/cancel`).set(auth);
     expect(res.status).toBe(200);
     expect(res.body.event.status).toBe("cancelled");
+    expect(res.body.notificationsCreated).toBe(0);
   });
 
   test("Admin can cancel someone else's event -> 200", async () => {
@@ -161,6 +264,7 @@ describe("PATCH /api/events/:id/cancel", () => {
     const res = await request(app).patch(`/api/events/${ev._id}/cancel`).set(auth);
     expect(res.status).toBe(200);
     expect(res.body.event.status).toBe("cancelled");
+    expect(res.body.notificationsCreated).toBe(0);
   });
 
   test("organizer cannot cancel someone else's event -> 403", async () => {
