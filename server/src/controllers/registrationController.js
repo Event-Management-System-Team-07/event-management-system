@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Event = require("../models/Event");
 const Registration = require("../models/Registration");
+const ROLES = require("../constants/roles");
 const {
   TransactionSupportError,
   assertTransactionSupport,
@@ -243,5 +244,37 @@ exports.getRegistrationHistory = async (req, res) => {
     return res.status(500).json({
       message: "Something went wrong. Please try again.",
     });
+  }
+};
+
+// GET /api/events/:eventId/registrations (event organizer or admin)
+exports.getEventRegistrations = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({ message: "Invalid event ID" });
+    }
+
+    const event = await Event.findById(eventId);
+    if (!event) return res.status(404).json({ message: "Event not found" });
+
+    const isOwner = event.organizer.toString() === req.user._id.toString();
+    if (!isOwner && req.user.role !== ROLES.ADMIN) {
+      return res.status(403).json({ message: "You can only view registrations for your own events" });
+    }
+
+    const registrations = await Registration.find({ event: event._id, status: "active" })
+      .select("user createdAt")
+      .populate("user", "name email")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      eventId: event._id,
+      registrationCount: registrations.length,
+      registrations,
+    });
+  } catch (err) {
+    logger.error("registrations.event_list_failed", err);
+    return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 };

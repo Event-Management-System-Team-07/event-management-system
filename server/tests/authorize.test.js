@@ -96,6 +96,14 @@ describe("authorize: role comes from the database, not the token", () => {
     );
     expect((await get("/admin-area")).status).toBe(200);
   });
+
+  test("a valid token for a deleted user cannot access admin routes", async () => {
+    jest.spyOn(User, "findById").mockResolvedValue(null);
+
+    const res = await get("/admin-area");
+
+    expect(res.status).toBe(401);
+  });
 });
 
 describe("authorize: setup mistakes are caught immediately", () => {

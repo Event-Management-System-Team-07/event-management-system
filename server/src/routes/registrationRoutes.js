@@ -8,9 +8,18 @@ const {
   registerForEvent,
   cancelRegistration,
   getRegistrationHistory,
+  getEventRegistrations,
 } = require("../controllers/registrationController");
 
 const router = express.Router();
+
+// GET /api/events/:eventId/registrations (Organizer or Admin; ownership checked in controller)
+router.get(
+  "/:eventId/registrations",
+  authenticate,
+  authorize(ROLES.ORGANIZER, ROLES.ADMIN),
+  getEventRegistrations
+);
 
 // GET /api/events/registrations/history
 router.get(
