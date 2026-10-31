@@ -1,12 +1,11 @@
-const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const ROLES = require("../constants/roles");
+const { hashPassword, verifyPassword } = require("../utils/password");
 
 // Roles a person may pick for themselves at sign-up. Admin is never self-registered.
 const SELF_REGISTER_ROLES = [ROLES.PARTICIPANT, ROLES.ORGANIZER];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const BCRYPT_ROUNDS = 10;
 
 const isString = (value) => typeof value === "string";
 
@@ -55,7 +54,7 @@ async function register(req, res) {
       return res.status(409).json({ message: "An account with this email already exists" });
     }
 
-    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    const passwordHash = await hashPassword(password);
     const user = await User.create({
       name: name.trim(),
       email: normalizedEmail,
@@ -85,7 +84,8 @@ async function login(req, res) {
     }
 
     const user = await User.findOne({ email: email.trim().toLowerCase() }).select("+passwordHash");
-    const passwordMatches = user && (await bcrypt.compare(password, user.passwordHash));
+    // verifyPassword also runs a dummy check when the email is unknown, so timing does not reveal it
+    const passwordMatches = await verifyPassword(password, user ? user.passwordHash : null);
 
     // Same message whether the email or the password was wrong
     if (!passwordMatches) {

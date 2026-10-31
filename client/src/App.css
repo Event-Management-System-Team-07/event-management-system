@@ -411,3 +411,13 @@ footer > span {
     align-items: flex-start;
   }
 }
+
+.confirmation-message {
+  margin: 0 0 24px;
+  padding: 14px 16px;
+  color: #176b50;
+  background: #e8f7f0;
+  border: 1px solid #b7e5d1;
+  border-radius: 9px;
+  font-size: 14px;
+}

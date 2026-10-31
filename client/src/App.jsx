@@ -39,6 +39,7 @@ function App() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [registered, setRegistered] = useState([]);
+  const [notice, setNotice] = useState("");
 
   const categories = ["All", ...new Set(events.map((event) => event.category))];
 
@@ -55,9 +56,14 @@ function App() {
 
   function register(event) {
     if (registered.includes(event.id)) return;
+    setRegistered((current) => [...current, event.id]);
+    setNotice(`Registration successful for ${event.title}.`);
+  }
 
-    setRegistered([...registered, event.id]);
-    alert(`You registered for ${event.title}!`);
+  function cancelRegistration(event) {
+    if (!registered.includes(event.id)) return;
+    setRegistered((current) => current.filter((id) => id !== event.id));
+    setNotice(`Registration cancelled for ${event.title}.`);
   }
 
   return (
@@ -124,6 +130,12 @@ function App() {
             </select>
           </div>
 
+          {notice && (
+            <p className="confirmation-message" role="status" aria-live="polite">
+              {notice}
+            </p>
+          )}
+
           <div className="event-grid">
             {filteredEvents.map((event) => (
               <article className="event-card" key={event.id}>
@@ -154,14 +166,15 @@ function App() {
 
                   <div className="event-footer">
                     <span>{event.seats} seats available</span>
-                    <button
-                      onClick={() => register(event)}
-                      disabled={registered.includes(event.id)}
-                    >
-                      {registered.includes(event.id)
-                        ? "Registered ✓"
-                        : "Register →"}
-                    </button>
+                    {registered.includes(event.id) ? (
+                      <button onClick={() => cancelRegistration(event)}>
+                        Cancel registration
+                      </button>
+                    ) : (
+                      <button onClick={() => register(event)}>
+                        Register →
+                      </button>
+                    )}
                   </div>
                 </div>
               </article>
