@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Event = require("../models/Event");
 const ROLES = require("../constants/roles");
+const { logError } = require("../utils/safeLogger");
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
@@ -64,7 +65,7 @@ exports.listEvents = async (req, res) => {
 
     return res.json({ events, page, limit, total, totalPages: Math.ceil(total / limit) });
   } catch (err) {
-    console.error("listEvents failed:", err.message);
+    logError("listEvents.failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 };
@@ -86,7 +87,7 @@ exports.getEventById = async (req, res) => {
 
     return res.json({ event });
   } catch (err) {
-    console.error("getEventById failed:", err.message);
+    logError("getEventById.failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 };
