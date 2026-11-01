@@ -173,6 +173,24 @@ describe("PATCH /api/events/:id/cancel", () => {
     );
   });
 
+  test("concurrent cancellation -> 409 when event was already cancelled", async () => {
+    asRole(ROLES.ORGANIZER);
+    const ev = makeEvent({ status: "published" });
+    jest.spyOn(Event, "findById").mockResolvedValue(ev);
+
+    Event.updateOne.mockResolvedValue({ matchedCount: 0 });
+
+    const res = await request(app)
+      .patch(`/api/events/${ev._id}/cancel`)
+      .set(auth);
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe("Event is already cancelled");
+    expect(Event.updateOne).toHaveBeenCalled();
+    expect(recordEventAction).not.toHaveBeenCalled();
+    expect(transactionSession.endSession).toHaveBeenCalledTimes(1);
+  });
+
   test("cancelling an event notifies multiple active registrants", async () => {
     asRole(ROLES.ORGANIZER);
     const ev = makeEvent({ status: "published" });
