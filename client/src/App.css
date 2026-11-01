@@ -183,6 +183,41 @@ a {
   margin: 30px 0;
 }
 
+.notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 28px;
+  padding: 14px 16px;
+  border: 1px solid;
+  border-radius: 9px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.notice-success {
+  color: #17694f;
+  background: #e9f8f1;
+  border-color: #b7e5d1;
+}
+
+.notice-error {
+  color: #9f3540;
+  background: #fff0f1;
+  border-color: #f0c4c8;
+}
+
+.notice button {
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 21px;
+  line-height: 1;
+}
+
 .filters input,
 .filters select {
   min-height: 48px;
@@ -326,8 +361,18 @@ a {
 }
 
 .event-footer button:disabled {
-  background: #24866c;
-  cursor: default;
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.event-footer .cancel-button {
+  color: #9f3540;
+  background: #fff0f1;
+  border: 1px solid #f0c4c8;
+}
+
+.event-footer .cancel-button:hover {
+  background: #ffe0e3;
 }
 
 .empty-state {
