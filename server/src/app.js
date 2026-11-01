@@ -3,6 +3,9 @@ const authRoutes = require("./routes/authRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const eventBrowseRoutes = require("./routes/eventBrowseRoutes");
 const registrationRoutes = require("./routes/registrationRoutes");
+
+const adminUserRoutes = require("./routes/adminUserRoutes");
+
 const notificationRoutes = require("./routes/notificationRoutes");
 const logger = require("./utils/logger");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
@@ -18,7 +21,7 @@ app.use(rejectUnsafeInput);
 
 app.get("/api/health", (req, res) => {
   res.status(200).json({
-    status: "OK"
+    status: "OK",
   });
 });
 
@@ -26,6 +29,9 @@ app.use("/api/auth", authRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/events", eventBrowseRoutes);
 app.use("/api/events", registrationRoutes);
+
+app.use("/api/admin/users", adminUserRoutes);
+
 app.use("/api/notifications", notificationRoutes);
 
 // SEC-02: must stay AFTER the routes: turns bad-JSON / too-large body errors into clean JSON responses
