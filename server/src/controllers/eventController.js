@@ -4,8 +4,8 @@ const Registration = require("../models/Registration");
 const Notification = require("../models/Notification");
 const ROLES = require("../constants/roles");
 const { validateEventInput } = require("../validators/eventValidator");
+const logger = require("../utils/logger");
 const { recordEventAction } = require("../services/auditLogger");
-const { logError } = require("../utils/safeLogger");
 
 // Only these fields can be set by the client (organizer and status are controlled by the server).
 const EDITABLE = ["title", "description", "category", "venue", "startDate", "endDate", "capacity"];
@@ -27,7 +27,7 @@ exports.createEvent = async (req, res) => {
     await recordEventAction({ actorId: req.user._id, action: "event.created", eventId: event._id });
     return res.status(201).json({ message: "Event created", event });
   } catch (err) {
-    logError("createEvent.failed", err);
+    logger.error("events.create_failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 };
@@ -59,7 +59,7 @@ exports.updateEvent = async (req, res) => {
     await recordEventAction({ actorId: req.user._id, action: "event.updated", eventId: event._id });
     return res.json({ message: "Event updated", event });
   } catch (err) {
-    logError("updateEvent.failed", err);
+    logger.error("events.update_failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 };
@@ -102,7 +102,7 @@ exports.publishEvent = async (req, res) => {
     await recordEventAction({ actorId: req.user._id, action: "event.published", eventId: event._id });
     return res.json({ message: "Event published", event });
   } catch (err) {
-    logError("publishEvent.failed", err);
+    logger.error("events.publish_failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 };
@@ -166,7 +166,7 @@ exports.cancelEvent = async (req, res) => {
     if (err && err.code === "EVENT_ALREADY_CANCELLED") {
       return res.status(409).json({ message: "Event is already cancelled" });
     }
-    logError("cancelEvent.failed", err);
+    logger.error("events.cancel_failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 };

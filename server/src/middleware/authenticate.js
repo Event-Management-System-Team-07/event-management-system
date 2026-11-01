@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const User = require("../models/User");
-const { logError } = require("../utils/safeLogger");
+const logger = require("../utils/logger");
 
 // AUTH-02: authentication middleware.
 // Expects the header:  Authorization: Bearer <token>   (token comes from POST /api/auth/login)
@@ -62,7 +62,7 @@ async function authenticate(req, res, next) {
     req.user = user;
     return next();
   } catch (err) {
-    logError("authenticate.failed", err);
+    logger.error("authentication.middleware_failed", err);
     return res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 }

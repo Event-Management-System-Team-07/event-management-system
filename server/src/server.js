@@ -2,12 +2,12 @@ require("dotenv").config();
 
 const mongoose = require("mongoose");
 const app = require("./app");
+const logger = require("./utils/logger");
 const Registration = require("./models/Registration");
 const {
   assertTransactionSupport,
   backfillRegistrationCounters,
 } = require("./db/registrationIntegrity");
-const { logError } = require("./utils/safeLogger");
 
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI;
@@ -26,14 +26,14 @@ async function startServer() {
   await Registration.createIndexes();
   await backfillRegistrationCounters();
 
-  console.log("Connected to MongoDB");
+  logger.info("server.database_connected");
 
   app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    logger.info("server.listening", { port: Number(PORT) });
   });
 }
 
 startServer().catch((error) => {
-  logError("server.start_failed", error);
+  logger.error("server.startup_failed", error);
   process.exitCode = 1;
 });
