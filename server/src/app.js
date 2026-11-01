@@ -3,9 +3,16 @@ const authRoutes = require("./routes/authRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const eventBrowseRoutes = require("./routes/eventBrowseRoutes");
 const registrationRoutes = require("./routes/registrationRoutes");
+
 const adminEventRoutes = require("./routes/adminEventRoutes");
+
+
+const adminUserRoutes = require("./routes/adminUserRoutes");
+
 const notificationRoutes = require("./routes/notificationRoutes");
+const logger = require("./utils/logger");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
+const { rejectUnsafeInput, handleBodyParseErrors } = require("./middleware/inputValidation");
 
 const app = express();
 
@@ -14,6 +21,10 @@ app.disable("x-powered-by");
 
 // Parse JSON before routes so malformed/oversized JSON reaches errorHandler.
 app.use(express.json({ limit: "100kb" }));
+
+app.use(express.json());
+app.use(rejectUnsafeInput);
+
 
 app.get("/api/health", (req, res) => {
   res.status(200).json({
@@ -25,10 +36,22 @@ app.use("/api/auth", authRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/events", eventBrowseRoutes);
 app.use("/api/events", registrationRoutes);
+
 app.use("/api/admin/events", adminEventRoutes);
 app.use("/api/notifications", notificationRoutes);
 
 // Unknown routes return JSON instead of Express's default HTML.
+
+
+app.use("/api/admin/users", adminUserRoutes);
+
+app.use("/api/notifications", notificationRoutes);
+
+// SEC-02: must stay AFTER the routes: turns bad-JSON / too-large body errors into clean JSON responses
+app.use(handleBodyParseErrors);
+
+// SEC-03: must stay last. Unknown routes and all errors return generic JSON.
+
 app.use(notFound);
 
 // Error handler must be registered last.
@@ -38,7 +61,7 @@ if (require.main === module) {
   const PORT = process.env.PORT || 5000;
 
   app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    logger.info("server.listening", { port: Number(PORT) });
   });
 }
 
