@@ -1,282 +1,113 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  cancelRegistration,
-  getEvents,
-  getRegistrationHistory,
-  registerForEvent,
-} from "./api";
-import {
-  getActiveRegistrationIds,
-  getRegistrationErrorMessage,
-  updateEventRegistrationCount,
-} from "./registrationState";
+import { useEffect } from "react";
+import { AuthProvider } from "./components/AuthContext";
+import { useAuth } from "./lib/authContext";
+import AppLink from "./components/AppLink";
+import NavBar from "./components/NavBar";
+import { navigate, usePathname } from "./lib/navigation";
+import EventDetailsPage from "./pages/EventDetailsPage";
+import EventFormPage from "./pages/EventFormPage";
+import HomePage from "./pages/HomePage";
+import LoginPage from "./pages/LoginPage";
+import OrganizerDashboard from "./pages/OrganizerDashboard";
+import ParticipantDashboard from "./pages/ParticipantDashboard";
+import ProfilePage from "./pages/ProfilePage";
+import RegisterPage from "./pages/RegisterPage";
+import RegistrationHistoryPage from "./pages/RegistrationHistoryPage";
 import "./App.css";
 
-const formatDate = (date) =>
-  new Date(date).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+function dashboardPath(role) {
+  if (role === "Organizer") return "/organizer";
+  if (role === "Participant") return "/participant";
+  return "/";
+}
 
-const formatTime = (date) =>
-  new Date(date).toLocaleTimeString("en-IN", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+function decodePathParam(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
 
-function App() {
-  const [events, setEvents] = useState([]);
-  const [registeredIds, setRegisteredIds] = useState(new Set());
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("All");
-  const [loading, setLoading] = useState(true);
-  const [actionEventId, setActionEventId] = useState(null);
-  const [notice, setNotice] = useState(null);
-  const processingEventIds = useRef(new Set());
+function ProtectedPage({ roles, children }) {
+  const { user } = useAuth();
+  const pathname = usePathname();
+  const allowedRoles = roles?.join("|");
+  const hasAccess = !allowedRoles || allowedRoles.split("|").includes(user?.role);
 
-  const loadEvents = useCallback(async () => {
-    setLoading(true);
-    setNotice(null);
-
-    try {
-      const [eventResponse, historyResponse] = await Promise.all([
-        getEvents(),
-        getRegistrationHistory(),
-      ]);
-      setEvents(eventResponse.events || []);
-      setRegisteredIds(
-        getActiveRegistrationIds(historyResponse.registrations || [])
-      );
-    } catch (error) {
-      setNotice({ type: "error", message: getRegistrationErrorMessage(error) });
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (!user) {
+      navigate(`/login?next=${encodeURIComponent(pathname)}`, { replace: true });
+    } else if (!hasAccess) {
+      navigate(dashboardPath(user.role), { replace: true });
     }
+  }, [hasAccess, pathname, user]);
+
+  if (!user || !hasAccess) {
+    return <main className="page-shell"><p className="loading-state">Taking you to the right page...</p></main>;
+  }
+  return children;
+}
+
+function RouteContent() {
+  const pathname = usePathname();
+  const { user } = useAuth();
+
+  useEffect(() => {
+    const handleExpiredSession = () => navigate("/login?expired=1", { replace: true });
+    window.addEventListener("eventify:session-expired", handleExpiredSession);
+    return () => window.removeEventListener("eventify:session-expired", handleExpiredSession);
   }, []);
 
   useEffect(() => {
-    async function loadInitialEvents() {
-      await loadEvents();
-    }
+    if (pathname === "/" && user) navigate(dashboardPath(user.role), { replace: true });
+    if ((pathname === "/login" || pathname === "/register") && user) navigate(dashboardPath(user.role), { replace: true });
+  }, [pathname, user]);
 
-    loadInitialEvents();
-  }, [loadEvents]);
-
-  const categories = useMemo(
-    () => ["All", ...new Set(events.map((event) => event.category))],
-    [events]
-  );
-
-  const filteredEvents = events.filter((event) => {
-    const query = search.toLowerCase();
-    const matchesSearch =
-      event.title.toLowerCase().includes(query) ||
-      event.description.toLowerCase().includes(query) ||
-      event.venue.toLowerCase().includes(query);
-    const matchesCategory =
-      category === "All" || event.category === category;
-    return matchesSearch && matchesCategory;
-  });
-
-  async function handleRegistration(event) {
-    const eventId = event._id;
-    if (processingEventIds.current.has(eventId)) return;
-    processingEventIds.current.add(eventId);
-    setActionEventId(eventId);
-    setNotice(null);
-
-    try {
-      await registerForEvent(eventId);
-      setRegisteredIds((current) => new Set(current).add(eventId));
-      setEvents((current) => updateEventRegistrationCount(current, eventId, 1));
-      setNotice({
-        type: "success",
-        message: `You are registered for ${event.title}.`,
-      });
-    } catch (error) {
-      setNotice({ type: "error", message: getRegistrationErrorMessage(error) });
-    } finally {
-      processingEventIds.current.delete(eventId);
-      setActionEventId((current) => (current === eventId ? null : current));
-    }
-  }
-
-  async function handleCancellation(event) {
-    const eventId = event._id;
-    if (processingEventIds.current.has(eventId)) return;
-    processingEventIds.current.add(eventId);
-    setActionEventId(eventId);
-    setNotice(null);
-
-    try {
-      await cancelRegistration(eventId);
-      setRegisteredIds((current) => {
-        const next = new Set(current);
-        next.delete(eventId);
-        return next;
-      });
-      setEvents((current) => updateEventRegistrationCount(current, eventId, -1));
-      setNotice({
-        type: "success",
-        message: `Your registration for ${event.title} was cancelled.`,
-      });
-    } catch (error) {
-      setNotice({ type: "error", message: getRegistrationErrorMessage(error) });
-    } finally {
-      processingEventIds.current.delete(eventId);
-      setActionEventId((current) => (current === eventId ? null : current));
+  let page;
+  if (pathname === "/") {
+    page = user ? null : <HomePage />;
+  } else if (pathname === "/login") {
+    page = user ? null : <LoginPage />;
+  } else if (pathname === "/register") {
+    page = user ? null : <RegisterPage />;
+  } else if (pathname === "/participant") {
+    page = <ProtectedPage roles={["Participant"]}><ParticipantDashboard /></ProtectedPage>;
+  } else if (pathname === "/registrations") {
+    page = <ProtectedPage roles={["Participant"]}><RegistrationHistoryPage /></ProtectedPage>;
+  } else if (pathname === "/organizer") {
+    page = <ProtectedPage roles={["Organizer"]}><OrganizerDashboard /></ProtectedPage>;
+  } else if (pathname === "/organizer/events/new") {
+    page = <ProtectedPage roles={["Organizer"]}><EventFormPage /></ProtectedPage>;
+  } else if (pathname === "/profile") {
+    page = <ProtectedPage><ProfilePage /></ProtectedPage>;
+  } else {
+    const editMatch = pathname.match(/^\/organizer\/events\/([^/]+)\/edit$/);
+    const detailsMatch = pathname.match(/^\/events\/([^/]+)$/);
+    if (editMatch) {
+      page = <ProtectedPage roles={["Organizer"]}><EventFormPage eventId={decodePathParam(editMatch[1])} /></ProtectedPage>;
+    } else if (detailsMatch) {
+      page = <ProtectedPage roles={["Participant", "Organizer", "Admin"]}><EventDetailsPage eventId={decodePathParam(detailsMatch[1])} /></ProtectedPage>;
+    } else {
+      page = <main className="page-shell narrow-shell"><div className="empty-state"><h1>Page not found</h1><p>The page you requested does not exist.</p><AppLink className="button" href="/">Return home</AppLink></div></main>;
     }
   }
 
   return (
     <div className="app">
-      <header className="navbar">
-        <a className="brand" href="#">
-          <span className="brand-icon">E</span>
-          Eventify
-        </a>
-        <a className="nav-link" href="#events">
-          Explore Events
-        </a>
-      </header>
-
-      <main>
-        <section className="hero">
-          <span className="eyebrow">YOUR NEXT EXPERIENCE STARTS HERE</span>
-          <h1>
-            Discover events.
-            <br />
-            <span>Make memories.</span>
-          </h1>
-          <p>
-            Find exciting events, meet amazing people, and register for
-            experiences that inspire you.
-          </p>
-          <a className="hero-button" href="#events">
-            Explore Events ↓
-          </a>
-          <div className="hero-decoration">✦</div>
-        </section>
-
-        <section className="events-section" id="events">
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">WHAT&apos;S HAPPENING</span>
-              <h2>Upcoming Events</h2>
-              <p>Find the perfect event for you.</p>
-            </div>
-            <span className="event-count">
-              {filteredEvents.length} {filteredEvents.length === 1 ? "event" : "events"}
-            </span>
-          </div>
-
-          {notice && (
-            <div className={`notice notice-${notice.type}`} role="status">
-              <span>{notice.message}</span>
-              <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss message">
-                ×
-              </button>
-            </div>
-          )}
-
-          <div className="filters">
-            <input
-              type="search"
-              placeholder="Search by event, description, or venue..."
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              aria-label="Search events"
-            />
-            <select
-              value={category}
-              onChange={(event) => setCategory(event.target.value)}
-              aria-label="Filter by category"
-            >
-              {categories.map((item) => (
-                <option key={item} value={item}>
-                  {item === "All" ? "All Categories" : item}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {loading && <div className="empty-state"><p>Loading events...</p></div>}
-
-          {!loading && filteredEvents.length > 0 && (
-            <div className="event-grid">
-              {filteredEvents.map((event) => {
-                const eventId = event._id;
-                const isRegistered = registeredIds.has(eventId);
-                const isProcessing = actionEventId === eventId;
-                const seatsAvailable =
-                  Math.max(0, event.capacity - (event.activeRegistrations || 0));
-
-                return (
-                  <article className="event-card" key={eventId}>
-                    <div className={`event-banner category-${event.category.toLowerCase()}`}>
-                      <span>{event.category}</span>
-                      <span className="banner-symbol">✧</span>
-                    </div>
-                    <div className="event-content">
-                      <div className="event-date">
-                        <span>📅 {formatDate(event.startDate)}</span>
-                        <span>🕒 {formatTime(event.startDate)}</span>
-                      </div>
-                      <h3>{event.title}</h3>
-                      <p className="event-description">{event.description}</p>
-                      <p className="event-location">📍 {event.venue}</p>
-                      <div className="event-footer">
-                        <span>{seatsAvailable} seats available</span>
-                        {isRegistered ? (
-                          <button
-                            className="cancel-button"
-                            type="button"
-                            onClick={() => handleCancellation(event)}
-                            disabled={isProcessing}
-                          >
-                            {isProcessing ? "Cancelling..." : "Cancel registration"}
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleRegistration(event)}
-                            disabled={isProcessing}
-                          >
-                            {isProcessing ? "Registering..." : "Register →"}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-
-          {!loading && filteredEvents.length === 0 && (
-            <div className="empty-state">
-              <h3>{events.length === 0 ? "No events available" : "No events found"}</h3>
-              <p>
-                {events.length === 0
-                  ? "Published events will appear here."
-                  : "Try a different search or category."}
-              </p>
-            </div>
-          )}
-        </section>
-      </main>
-
-      <footer>
-        <a className="brand" href="#">
-          <span className="brand-icon">E</span>
-          Eventify
-        </a>
+      <NavBar />
+      {page}
+      <footer className="site-footer">
+        <AppLink className="brand" href="/"><span className="brand-icon" aria-hidden="true">E</span>Eventify</AppLink>
         <p>Bringing people together, one event at a time.</p>
         <span>Event Management System · 2026</span>
       </footer>
     </div>
   );
+}
+
+function App() {
+  return <AuthProvider><RouteContent /></AuthProvider>;
 }
 
 export default App;
