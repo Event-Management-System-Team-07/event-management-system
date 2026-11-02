@@ -2,24 +2,24 @@
 
 :root {
   font-family: "DM Sans", sans-serif;
-  color: #201a50;
-  background: #f8f7fc;
+  color: var(--ink);
+  background: #fff8f5;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --ink: #201a50;
-  --ink-soft: #5140cf;
-  --muted: #737991;
-  --paper: #fffefa;
-  --canvas: #f8f7fc;
-  --line: #e6e3f5;
-  --coral: #6755e8;
-  --coral-dark: #5140cf;
-  --mint: #c9bdff;
-  --lilac: #eeebff;
-  --yellow: #6755e8;
-  --shadow-sm: 0 8px 24px rgba(29, 35, 64, 0.07);
-  --shadow-lg: 0 22px 55px rgba(29, 35, 64, 0.13);
+  --ink: #34243e;
+  --ink-soft: #594765;
+  --muted: #6f6575;
+  --paper: #fffefe;
+  --canvas: #f8f3fa;
+  --line: #e6d9eb;
+  --coral: #d1b8ea;
+  --coral-dark: #674b82;
+  --mint: #f7dce5;
+  --lilac: #f0e9f8;
+  --yellow: #fff0df;
+  --shadow-sm: 0 8px 24px rgba(76, 55, 85, 0.08);
+  --shadow-lg: 0 22px 55px rgba(76, 55, 85, 0.12);
 }
 
 * {
@@ -35,7 +35,8 @@ body {
   min-height: 100vh;
   margin: 0;
   background:
-    radial-gradient(circle at 88% 2%, rgba(233, 228, 255, 0.7), transparent 25rem),
+    radial-gradient(circle at 88% 2%, rgba(247, 220, 229, 0.58), transparent 25rem),
+    radial-gradient(circle at 8% 30%, rgba(255, 240, 223, 0.58), transparent 22rem),
     var(--canvas);
 }
 
@@ -69,7 +70,7 @@ button:disabled {
 }
 
 :focus-visible {
-  outline: 3px solid #9385ff;
+  outline: 3px solid #b69bcf;
   outline-offset: 3px;
 }
 

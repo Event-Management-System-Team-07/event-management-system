@@ -5,7 +5,7 @@ import { apiRequest } from "../lib/api";
 import { navigate } from "../lib/navigation";
 
 export default function RegisterPage() {
-  const [values, setValues] = useState({ name: "", email: "", password: "", confirmPassword: "", role: "Participant" });
+  const [values, setValues] = useState({ name: "", email: "", password: "", role: "Participant" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -23,10 +23,6 @@ export default function RegisterPage() {
     }
     if (values.password.length < 8 || new TextEncoder().encode(values.password).length > 72) {
       setError("Password must be 8 to 72 bytes long.");
-      return;
-    }
-    if (values.password !== values.confirmPassword) {
-      setError("Passwords do not match.");
       return;
     }
     if (!["Participant", "Organizer"].includes(values.role)) {
@@ -64,8 +60,6 @@ export default function RegisterPage() {
           <label htmlFor="register-password">Password</label>
           <input id="register-password" type="password" autoComplete="new-password" minLength="8" required value={values.password} onChange={(event) => setValues({ ...values, password: event.target.value })} aria-describedby="password-hint" />
           <span id="password-hint" className="field-hint">Use 8 to 72 bytes. Your password is sent only to the authentication API.</span>
-          <label htmlFor="register-confirm-password">Confirm password</label>
-          <input id="register-confirm-password" type="password" autoComplete="new-password" minLength="8" required value={values.confirmPassword} onChange={(event) => setValues({ ...values, confirmPassword: event.target.value })} />
           <label htmlFor="register-role">I am joining as</label>
           <select id="register-role" value={values.role} onChange={(event) => setValues({ ...values, role: event.target.value })}>
             <option value="Participant">Participant</option>
