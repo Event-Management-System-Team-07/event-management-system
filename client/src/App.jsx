@@ -61,7 +61,9 @@ function RouteContent() {
 
   useEffect(() => {
     if (pathname === "/" && user) navigate(dashboardPath(user.role), { replace: true });
-    if ((pathname === "/login" || pathname === "/register") && user) navigate(dashboardPath(user.role), { replace: true });
+    if (["/login", "/register", "/signup"].includes(pathname) && user) {
+      navigate(dashboardPath(user.role), { replace: true });
+    }
   }, [pathname, user]);
 
   let page;
@@ -69,7 +71,7 @@ function RouteContent() {
     page = user ? null : <HomePage />;
   } else if (pathname === "/login") {
     page = user ? null : <LoginPage />;
-  } else if (pathname === "/register") {
+  } else if (pathname === "/register" || pathname === "/signup") {
     page = user ? null : <RegisterPage />;
   } else if (pathname === "/participant") {
     page = <ProtectedPage roles={["Participant"]}><ParticipantDashboard /></ProtectedPage>;

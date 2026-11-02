@@ -21,6 +21,13 @@ export default function EventCard({ event, registrationStatus, onRegister, busy 
         <p className="event-location">{event.venue}</p>
         <div className="event-footer">
           <span>{remaining} of {event.capacity} seats available</span>
+          <AppLink
+            className="button button-secondary"
+            href={`/events/${eventId}`}
+            aria-label={`View details for ${event.title}`}
+          >
+            View details
+          </AppLink>
           {registrationStatus === "active" ? (
             <button type="button" className="button button-secondary" disabled={busy} onClick={() => onRegister(event, true)}>
               {busy ? "Please wait..." : "Cancel registration"}
