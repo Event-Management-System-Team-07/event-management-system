@@ -1,16 +1,28 @@
-# React + Vite
+# Eventify frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The React/Vite client integrates with the Express API in `../server`.
 
-Currently, two official plugins are available:
+## Run locally
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Start the backend on port `5000`, then start Vite:
 
-## React Compiler
+```sh
+npm run dev
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Vite proxies `/api` requests to `http://localhost:5000` by default. Override the proxy target with `VITE_API_PROXY_TARGET` when the backend runs elsewhere. Set `VITE_API_BASE_URL` to change the API URL used by the browser; it defaults to `/api`. For production, route `/api` through a same-origin reverse proxy or configure the backend to allow the deployed frontend origin.
 
-## Expanding the ESLint configuration
+## Frontend workflows
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- Public registration supports the backend's `Participant` and `Organizer` roles only.
+- Bearer tokens from login are held in `sessionStorage` and sent by the shared API service. This supports refreshes in the same browser session; the backend currently issues tokens for the `Authorization` header and does not provide an HttpOnly-cookie session or a current-user endpoint.
+- Participants browse published events, filter by title/venue, category, and date, register/cancel, and view registration history.
+- Organizers create drafts, edit and publish events, cancel events, and view active participant registrations. The backend has no organizer-owned event-list route, so the dashboard combines published events returned by `GET /api/events` with event IDs created in this browser. Drafts created elsewhere cannot be discovered from this API.
+- The event model uses `startDate` as the registration cutoff. It does not expose a separate registration deadline or populated organizer profile information.
+
+## Checks
+
+```sh
+npm run build
+npm run lint
+```
