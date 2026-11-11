@@ -24,4 +24,4 @@ Thumbs.db
 .vscode/
 .idea/
 # Test coverage reports
-coverage/
+server/coverage/
